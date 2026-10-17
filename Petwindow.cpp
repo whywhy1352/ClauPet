@@ -23,9 +23,6 @@ void Petwindow::paintEvent(QPaintEvent*)
 	case PetState::WaitingPermission:
 		painter.setBrush(QColor(245, 185, 40));
 		break;
-	case PetState::Done:
-		painter.setBrush(QColor(80, 190, 110));
-		break;
 	case PetState::Error:
 		painter.setBrush(QColor(225, 75, 70));
 		break;
@@ -74,9 +71,6 @@ void Petwindow::keyPressEvent(QKeyEvent* event)
 		setState(PetState::WaitingPermission);
 		break;
 	case Qt::Key_4:
-		setState(PetState::Done);
-		break;
-	case Qt::Key_5:
 		setState(PetState::Error);
 		break;
 	}
