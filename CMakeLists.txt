@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets)
 
-add_executable(claude-pet main.cpp)
+add_executable(claude-pet main.cpp "Petwindow.h" "Petwindow.cpp")
 target_link_libraries(claude-pet PRIVATE Qt6::Widgets)
 
 if(MSVC)

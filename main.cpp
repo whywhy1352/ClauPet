@@ -1,12 +1,13 @@
 #include <QApplication>
-#include <QLabel>
+#include "Petwindow.h"
 
-int main(int argc, char* argv[]) {
+int main(int argc, char* argv[]) 
+{
     QApplication app(argc, argv);
-
-    QLabel label("你好，桌宠");
-    label.resize(300, 300);
-    label.show();
-
+    
+    Petwindow pet{};
+    pet.show();
+    
+    
     return app.exec();
 }
