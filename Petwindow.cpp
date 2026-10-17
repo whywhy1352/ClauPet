@@ -3,6 +3,8 @@
 Petwindow::Petwindow()
 {
 	resize(200, 200);
+	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
+	setAttribute(Qt::WA_TranslucentBackground);
 }
 void Petwindow::paintEvent(QPaintEvent*)
 {
