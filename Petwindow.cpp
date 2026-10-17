@@ -1,6 +1,7 @@
 #include<QPainter>
 #include"Petwindow.h"
 #include<QMouseEvent>
+#include<QKeyEvent>
 Petwindow::Petwindow()
 {
 	resize(200, 200);
@@ -11,7 +12,24 @@ void Petwindow::paintEvent(QPaintEvent*)
 {
 	QPainter painter(this);
 	painter.setRenderHint(QPainter::Antialiasing);
-	painter.setBrush(QColor(255, 140, 60));
+	switch (m_state)
+	{
+	case PetState::Idle:
+		painter.setBrush(QColor(217, 119, 87));
+		break;
+	case PetState::Working:
+		painter.setBrush(QColor(70, 130, 230));
+		break;
+	case PetState::WaitingPermission:
+		painter.setBrush(QColor(245, 185, 40));
+		break;
+	case PetState::Done:
+		painter.setBrush(QColor(80, 190, 110));
+		break;
+	case PetState::Error:
+		painter.setBrush(QColor(225, 75, 70));
+		break;
+	}
 	painter.drawEllipse(QPoint(100, 100), 80, 80);
 }
 void Petwindow::mousePressEvent(QMouseEvent* event)
@@ -31,5 +49,35 @@ void Petwindow::mouseMoveEvent(QMouseEvent* event)
 	{
 		QPoint temp{ event->globalPosition().toPoint() - m_dragOffset };
 		move(temp);
+	}
+}
+void Petwindow::setState(PetState state)
+{
+	m_state = state;
+	update();
+}
+PetState Petwindow::state() const
+{
+	return m_state;
+}
+void Petwindow::keyPressEvent(QKeyEvent* event)
+{
+	switch (event->key())
+	{
+	case Qt::Key_1:
+		setState(PetState::Idle);
+		break;
+	case Qt::Key_2:
+		setState(PetState::Working);
+		break;
+	case Qt::Key_3:
+		setState(PetState::WaitingPermission);
+		break;
+	case Qt::Key_4:
+		setState(PetState::Done);
+		break;
+	case Qt::Key_5:
+		setState(PetState::Error);
+		break;
 	}
 }
