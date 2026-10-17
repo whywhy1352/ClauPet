@@ -1,6 +1,7 @@
 #pragma once
 #include<QWidget>
 #include"Petstate.h"
+#include<QPixmap>
 class Petwindow : public QWidget
 {
 public:
@@ -15,4 +16,8 @@ protected:
 private:
 	QPoint m_dragOffset;
 	PetState m_state{ PetState::Idle };
+	QPixmap m_idle;
+	QPixmap m_working;
+	QPixmap m_waiting;
+	QPixmap m_error;
 };

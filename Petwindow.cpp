@@ -2,9 +2,22 @@
 #include"Petwindow.h"
 #include<QMouseEvent>
 #include<QKeyEvent>
+constexpr int kPetSize{ 180 };
+static QPixmap loadPetImage(const char* path,qreal dpr)
+{
+	const int realSize{ static_cast<int>(kPetSize * dpr) };
+	QPixmap img{ QPixmap( path ).scaled(realSize, realSize, Qt::KeepAspectRatio, Qt::SmoothTransformation) };
+	img.setDevicePixelRatio(dpr);
+	return img;
+}
 Petwindow::Petwindow()
 {
-	resize(200, 200);
+	qreal dpr{ devicePixelRatioF() };
+	resize(kPetSize, kPetSize);
+	m_idle = loadPetImage(":/assets/pet/idle.png", dpr);
+	m_working = loadPetImage(":/assets/pet/working.png", dpr);
+	m_waiting = loadPetImage(":/assets/pet/waiting.png", dpr);
+	m_error = loadPetImage(":/assets/pet/error.png", dpr);
 	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
 	setAttribute(Qt::WA_TranslucentBackground);
 }
@@ -12,22 +25,23 @@ void Petwindow::paintEvent(QPaintEvent*)
 {
 	QPainter painter(this);
 	painter.setRenderHint(QPainter::Antialiasing);
+	const QPixmap* pixmap{ &m_idle };
 	switch (m_state)
 	{
 	case PetState::Idle:
-		painter.setBrush(QColor(217, 119, 87));
+		pixmap = &m_idle;
 		break;
 	case PetState::Working:
-		painter.setBrush(QColor(70, 130, 230));
+		pixmap = &m_working;
 		break;
 	case PetState::WaitingPermission:
-		painter.setBrush(QColor(245, 185, 40));
+		pixmap = &m_waiting;
 		break;
 	case PetState::Error:
-		painter.setBrush(QColor(225, 75, 70));
+		pixmap = &m_error;
 		break;
 	}
-	painter.drawEllipse(QPoint(100, 100), 80, 80);
+	painter.drawPixmap(0, 0, *pixmap);
 }
 void Petwindow::mousePressEvent(QMouseEvent* event)
 {
