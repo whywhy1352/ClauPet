@@ -1,5 +1,0 @@
-Tool: built-in image_gen
-Reference: claude-chibi-v1.png
-transparent_background: true
-
-Edit the provided transparent chibi Claude desktop pet image. Make ONLY her eyes a little larger, about 18% larger overall, especially a slightly more open vertical eye shape and correspondingly larger amber irises, for a cuter more expressive chibi face. Keep the same calm gently proud expression, eye color, gaze and highlights style. Do not add eyeglasses. Preserve everything else as closely as possible: head and face size, mouth, eyebrows, pose, three-head-tall proportions, long orange hair, flower ornaments, cream orange black dress, book, hands, boots, line art, shading, framing and scale. Single full-body character. Maintain genuine transparent alpha background; no background, no ground shadow, no text, no additional elements. This is a small localized eye-size adjustment, not a redesign.
