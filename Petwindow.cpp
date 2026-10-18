@@ -8,6 +8,7 @@
 #include<QJsonObject>	// JSON 里的 { ... } 对象
 #include<QApplication>	// qApp 和 QApplication::quit：点"退出"时结束整个程序
 #include<QIcon>			// 托盘图标用的图标类
+#include<QSettings>		// 保存配置（宠物的位置）；在 Windows 上存在注册表里，程序关掉后数据还在
 constexpr quint16 kPort{ 52790 };	// 监听的端口号；Claude Code 的 HTTP hook 要发到这个端口
 constexpr int kPetSize{ 180 };		// 宠物窗口和图片的大小，单位是逻辑像素（会乘上屏幕缩放比例）
 
@@ -62,6 +63,20 @@ Petwindow::Petwindow()
 {
 	qreal dpr{ devicePixelRatioF() };	// 当前屏幕的缩放比例（继承自 QWidget）
 	resize(kPetSize, kPetSize);	// 窗口大小（逻辑像素）
+	// ---- 恢复上次的位置 ----
+	// 两个参数（组织名、程序名）决定数据存在注册表的哪里：HKEY_CURRENT_USER\Software\ClaudePet\ClaudePet
+	// 必须和 mouseReleaseEvent 里保存时用的名字一样，才能读到同一份数据
+	QSettings settings{ "ClaudePet","ClaudePet" };
+	if (settings.contains("pos"))	// 第一次运行时还没存过，就跳过，用默认位置
+	{
+		const QPoint savedPos{ settings.value("pos").toPoint() };	// 上次保存的窗口左上角位置
+		// 检查宠物的中心点是否落在某个屏幕上：比如上次拖到了副屏，这次副屏没接，
+		// screenAt 就会返回 nullptr。这时不移动，否则宠物会出现在看不见的地方
+		if (QGuiApplication::screenAt(savedPos + QPoint(kPetSize / 2, kPetSize / 2)) != nullptr)
+		{
+			move(savedPos);
+		}
+	}
 	m_idle = loadPetImage(":/assets/pet/idle.png", dpr);		// 图片只在这里加载一次，paintEvent 里直接用
 	m_working = loadPetImage(":/assets/pet/working.png", dpr);
 	m_waiting = loadPetImage(":/assets/pet/waiting.png", dpr);
@@ -224,5 +239,16 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 	if (eventName == "StopFailure")
 	{
 		setState(PetState::Error);
+	}
+}
+
+// 鼠标松开：左键松开说明一次拖动结束了，把当前位置保存下来，下次启动时恢复
+// 选在这里保存，而不是在 mouseMoveEvent 里：拖一次只写一次，不会频繁写注册表
+void Petwindow::mouseReleaseEvent(QMouseEvent* event)
+{
+	if (event->button() == Qt::LeftButton)
+	{
+		QSettings settings{ "ClaudePet","ClaudePet" };	// 和构造函数里读取时用同样的名字
+		settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）
 	}
 }

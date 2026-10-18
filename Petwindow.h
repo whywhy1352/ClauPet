@@ -10,15 +10,16 @@
 class Petwindow : public QWidget
 {
 public:
-	Petwindow();					// 构造函数：设置窗口外观、加载图片、开始监听端口、创建菜单和托盘图标
+	Petwindow();					// 构造函数：恢复上次的位置、设置窗口外观、加载图片、开始监听端口、创建菜单和托盘图标
 	void setState(PetState state);	// 切换宠物状态，并通知 Qt 重画窗口（setter）
 	PetState state()const;			// 查询当前状态；常函数，只读不改（getter）
 protected:
-	// 下面 4 个都是重写 QWidget 的虚函数，由 Qt 在对应事件发生时自动调用
+	// 下面 5 个都是重写 QWidget 的虚函数，由 Qt 在对应事件发生时自动调用
 	void paintEvent(QPaintEvent* event) override;		// 窗口需要重画时：按当前状态画出对应的图片
 	void mousePressEvent(QMouseEvent* event) override;	// 鼠标按下时：左键记录拖动起点，右键弹出菜单
 	void mouseMoveEvent(QMouseEvent* event) override;	// 鼠标移动时：按住左键就拖动窗口
 	void keyPressEvent(QKeyEvent* event) override;		// 键盘按下时：数字键 1~4 手动切换状态（测试用）
+	void mouseReleaseEvent(QMouseEvent* event) override;	// 鼠标松开时：左键拖动结束，保存当前位置
 private:
 	QPoint m_dragOffset;				// 左键按下时，鼠标在窗口里的位置；拖动时用它保持相对位置不变
 	PetState m_state{ PetState::Idle };	// 当前状态，程序启动时是空闲
