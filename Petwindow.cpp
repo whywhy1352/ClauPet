@@ -6,6 +6,8 @@
 #include<QDebug>		// qDebug()：往控制台打印调试信息
 #include<QJsonDocument>	// 解析 JSON 文本
 #include<QJsonObject>	// JSON 里的 { ... } 对象
+#include<QApplication>	// qApp 和 QApplication::quit：点"退出"时结束整个程序
+#include<QIcon>			// 托盘图标用的图标类
 constexpr quint16 kPort{ 52790 };	// 监听的端口号；Claude Code 的 HTTP hook 要发到这个端口
 constexpr int kPetSize{ 180 };		// 宠物窗口和图片的大小，单位是逻辑像素（会乘上屏幕缩放比例）
 
@@ -64,7 +66,8 @@ Petwindow::Petwindow()
 	m_working = loadPetImage(":/assets/pet/working.png", dpr);
 	m_waiting = loadPetImage(":/assets/pet/waiting.png", dpr);
 	m_error = loadPetImage(":/assets/pet/error.png", dpr);
-	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);	// 无边框 + 始终置顶；用 | 组合两个标志位
+	// 无边框 + 始终置顶 + 工具窗口（不在任务栏显示按钮，改用托盘图标）；用 | 组合三个标志位
+	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
 	setAttribute(Qt::WA_TranslucentBackground);	// 背景透明：没画东西的地方完全透明，点击会穿透到后面的窗口
 	if (!m_server.listen(QHostAddress::LocalHost, kPort))	// 开始在 127.0.0.1:kPort 上监听，只接受本机的连接
 	{
@@ -90,6 +93,33 @@ Petwindow::Petwindow()
 			// 连接断开后，在安全的时机删除 socket 对象，释放内存
 			connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
 		});
+
+	// ---- 右键菜单（托盘图标和宠物本身共用同一个菜单）----
+	// 菜单项 1：隐藏 / 显示宠物。addAction 返回指向新菜单项的指针
+	QAction* toggleAction{ m_menu.addAction("Hide pet") };
+	// 点击时执行；[this]：要调用 isVisible/hide/show，[toggleAction]：要修改这一项的文字
+	connect(toggleAction, &QAction::triggered, this, [this, toggleAction]()
+		{
+			if (isVisible())	// 宠物现在可见 → 隐藏它（隐藏后程序仍在运行，照样接收事件）
+			{
+				hide();
+				toggleAction->setText("Show pet");
+			}
+			else				// 宠物现在隐藏 → 显示它
+			{
+				show();
+				toggleAction->setText("Hide pet");
+			}
+		});
+	// 菜单项 2：退出。qApp 指向 main 里唯一的 QApplication 对象，quit() 让 exec() 返回、程序结束
+	QAction* quitAction{ m_menu.addAction("quit") };
+	connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
+
+	// ---- 托盘图标（任务栏右下角）----
+	m_tray.setIcon(QIcon(m_idle));	// 用空闲状态的图片当图标
+	m_tray.setToolTip("Claude pet");	// 鼠标悬停时显示的文字
+	m_tray.setContextMenu(&m_menu);	// 右键托盘图标时弹出这个菜单（托盘会记住菜单的地址）
+	m_tray.show();
 }
 
 // 重画窗口：Qt 在窗口需要重画时自动调用（第一次显示、调用 update() 之后等）
@@ -117,7 +147,7 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 	painter.drawPixmap(0, 0, *pixmap);	// 从窗口左上角 (0, 0) 开始画；*pixmap 是解引用，得到图片本身
 }
 
-// 鼠标按下：左键记录拖动起点，右键关闭窗口（关闭最后一个窗口后 exec() 返回，程序退出）
+// 鼠标按下：左键记录拖动起点，右键弹出菜单（和托盘图标的菜单是同一个）
 void Petwindow::mousePressEvent(QMouseEvent* event)
 {
 	if (event->button() == Qt::LeftButton)	// button()：这一次是哪个键触发的
@@ -126,7 +156,7 @@ void Petwindow::mousePressEvent(QMouseEvent* event)
 	}
 	if (event->button() == Qt::RightButton)
 	{
-		close();	// 关闭窗口
+		m_menu.popup(event->globalPosition().toPoint());	// 在鼠标所在的屏幕位置弹出菜单，所以用屏幕坐标
 	}
 }
 
