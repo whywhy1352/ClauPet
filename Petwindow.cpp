@@ -2,6 +2,9 @@
 #include"Petwindow.h"
 #include<QMouseEvent>
 #include<QKeyEvent>
+#include<QTcpSocket>
+#include<QDebug>
+constexpr quint16 kPort{ 52790 };
 constexpr int kPetSize{ 180 };
 static QPixmap loadPetImage(const char* path,qreal dpr)
 {
@@ -20,6 +23,22 @@ Petwindow::Petwindow()
 	m_error = loadPetImage(":/assets/pet/error.png", dpr);
 	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
 	setAttribute(Qt::WA_TranslucentBackground);
+	if (!m_server.listen(QHostAddress::LocalHost, kPort))
+	{
+		qDebug() << "listen failed" << m_server.errorString();
+	}
+	connect(&m_server, &QTcpServer::newConnection, this, [this]() 
+		{
+			QTcpSocket* socket{ m_server.nextPendingConnection() };
+			connect(socket, &QTcpSocket::readyRead, this, [socket]()
+				{
+					QByteArray data{ socket->readAll() };
+					qDebug().noquote() << data;
+					socket->write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
+					socket->disconnectFromHost();
+				});
+			connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
+		});
 }
 void Petwindow::paintEvent(QPaintEvent*)
 {

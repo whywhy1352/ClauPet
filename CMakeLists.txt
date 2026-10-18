@@ -4,7 +4,9 @@ project(ClaudePet LANGUAGES CXX)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Network)
+
+
 
 add_executable(claude-pet main.cpp "Petwindow.h" "Petwindow.cpp" "Petstate.h")
 qt_add_resources(claude-pet "pet_image" PREFIX "/" FILES 
@@ -13,7 +15,7 @@ assets/pet/working.png
 assets/pet/waiting.png
 assets/pet/error.png
 )
-target_link_libraries(claude-pet PRIVATE Qt6::Widgets)
+target_link_libraries(claude-pet PRIVATE Qt6::Widgets Qt6::Network)
 
 if(MSVC)
     target_compile_options(claude-pet PRIVATE /utf-8)

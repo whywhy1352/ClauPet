@@ -2,6 +2,7 @@
 #include<QWidget>
 #include"Petstate.h"
 #include<QPixmap>
+#include<QTcpServer>
 class Petwindow : public QWidget
 {
 public:
@@ -20,4 +21,5 @@ private:
 	QPixmap m_working;
 	QPixmap m_waiting;
 	QPixmap m_error;
+	QTcpServer m_server;
 };
