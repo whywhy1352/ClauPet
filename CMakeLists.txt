@@ -9,6 +9,7 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Network)	# 找到 Qt6 的两个模�
 
 
 add_executable(claude-pet main.cpp "Petwindow.h" "Petwindow.cpp" "Petstate.h")	# 生成程序 claude-pet.exe，由这些源文件组成
+set_target_properties(claude-pet PROPERTIES WIN32_EXECUTABLE ON)
 # 把 4 张宠物图片编译进 .exe，程序里用 ":/assets/pet/xxx.png" 读取（注意：必须写在 add_executable 之后）
 qt_add_resources(claude-pet "pet_image" PREFIX "/" FILES
 assets/pet/idle.png
