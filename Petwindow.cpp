@@ -13,6 +13,36 @@ static QPixmap loadPetImage(const char* path,qreal dpr)
 	img.setDevicePixelRatio(dpr);
 	return img;
 }
+static bool tryReadyBody(QTcpSocket* socket, QByteArray& body)
+{
+	const QByteArray data{ socket->peek(socket->bytesAvailable()) };
+	const qsizetype headerEnd{ data.indexOf("\r\n\r\n") };
+	int contentLength{ 0 };
+	if (headerEnd == -1)
+	{
+		return false;
+	}
+	const QByteArray lower{ data.toLower() };
+	const qsizetype lineStart{ lower.indexOf("content-length:") };
+	if (lineStart != -1 && lineStart < headerEnd)
+	{
+		const qsizetype lineEnd{ lower.indexOf("\r\n", lineStart) };
+		const qsizetype valueStart{ lineStart + 15 };
+		contentLength = lower.mid(valueStart, lineEnd - valueStart).trimmed().toInt();
+	}
+	const qsizetype bodyStart{ headerEnd + 4 };
+	const qsizetype lengthIfEnough{ contentLength };
+	if (data.size() < bodyStart + lengthIfEnough)
+	{
+		return false;
+	}
+	else
+	{
+		socket->readAll();
+		body = data.mid(bodyStart, contentLength);
+		return true;
+	}
+}
 Petwindow::Petwindow()
 {
 	qreal dpr{ devicePixelRatioF() };
@@ -32,8 +62,12 @@ Petwindow::Petwindow()
 			QTcpSocket* socket{ m_server.nextPendingConnection() };
 			connect(socket, &QTcpSocket::readyRead, this, [socket]()
 				{
-					QByteArray data{ socket->readAll() };
-					qDebug().noquote() << data;
+					QByteArray body;
+					if (!tryReadyBody(socket, body))
+					{
+						return;
+					}
+					qDebug().noquote() << body;
 					socket->write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
 					socket->disconnectFromHost();
 				});
