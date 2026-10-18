@@ -1,85 +1,105 @@
-#include<QPainter>
-#include"Petwindow.h"
-#include<QMouseEvent>
-#include<QKeyEvent>
-#include<QTcpSocket>
-#include<QDebug>
-constexpr quint16 kPort{ 52790 };
-constexpr int kPetSize{ 180 };
+#include<QPainter>		// QPainter：在窗口上画画的"画笔"
+#include"Petwindow.h"	// 本文件实现的类
+#include<QMouseEvent>	// 鼠标事件：要调用它的成员函数，需要完整定义
+#include<QKeyEvent>		// 键盘事件：同上
+#include<QTcpSocket>	// 一条 TCP 连接：用来收发 HTTP 数据
+#include<QDebug>		// qDebug()：往控制台打印调试信息
+#include<QJsonDocument>	// 解析 JSON 文本
+#include<QJsonObject>	// JSON 里的 { ... } 对象
+constexpr quint16 kPort{ 52790 };	// 监听的端口号；Claude Code 的 HTTP hook 要发到这个端口
+constexpr int kPetSize{ 180 };		// 宠物窗口和图片的大小，单位是逻辑像素（会乘上屏幕缩放比例）
+
+// 加载一张宠物图片，并缩放到适合当前屏幕的大小
+// path：资源路径，比如 ":/assets/pet/idle.png"
+// dpr：屏幕缩放比例（device pixel ratio），175% 缩放时是 1.75
+// static：这个函数只在本 .cpp 文件里可见
 static QPixmap loadPetImage(const char* path,qreal dpr)
 {
-	const int realSize{ static_cast<int>(kPetSize * dpr) };
-	QPixmap img{ QPixmap( path ).scaled(realSize, realSize, Qt::KeepAspectRatio, Qt::SmoothTransformation) };
-	img.setDevicePixelRatio(dpr);
+	const int realSize{ static_cast<int>(kPetSize * dpr) };	// 屏幕上实际需要的像素数，比如 180 × 1.75 = 315
+	QPixmap img{ QPixmap( path ).scaled(realSize, realSize, Qt::KeepAspectRatio, Qt::SmoothTransformation) };	// 加载原图，保持比例、平滑地缩小到 realSize
+	img.setDevicePixelRatio(dpr);	// 告诉 Qt 这张图已经按 dpr 倍准备好了，显示时不要再放大（否则会模糊）
 	return img;
 }
+
+// 判断一个 HTTP 请求是否已经完整收到
+// 收齐了：取走数据，把请求体存进 body（输出参数），返回 true
+// 没收齐：什么都不取走，返回 false，等下一次 readyRead 再来判断
 static bool tryReadyBody(QTcpSocket* socket, QByteArray& body)
 {
-	const QByteArray data{ socket->peek(socket->bytesAvailable()) };
-	const qsizetype headerEnd{ data.indexOf("\r\n\r\n") };
-	int contentLength{ 0 };
+	const QByteArray data{ socket->peek(socket->bytesAvailable()) };	// "偷看"目前收到的全部数据，数据仍留在 socket 里
+	const qsizetype headerEnd{ data.indexOf("\r\n\r\n") };	// 请求头结束的位置（空行）；-1 表示请求头还没收完
+	int contentLength{ 0 };	// 请求体的字节数；请求头里没写 content-length 时就当作 0
 	if (headerEnd == -1)
 	{
-		return false;
+		return false;	// 请求头还没收完
 	}
-	const QByteArray lower{ data.toLower() };
-	const qsizetype lineStart{ lower.indexOf("content-length:") };
-	if (lineStart != -1 && lineStart < headerEnd)
+	const QByteArray lower{ data.toLower() };	// 转成小写：HTTP 请求头的名字不区分大小写
+	const qsizetype lineStart{ lower.indexOf("content-length:") };	// "content-length:" 出现的位置
+	if (lineStart != -1 && lineStart < headerEnd)	// 找到了，并且确实在请求头里（不是碰巧出现在请求体里）
 	{
-		const qsizetype lineEnd{ lower.indexOf("\r\n", lineStart) };
-		const qsizetype valueStart{ lineStart + 15 };
-		contentLength = lower.mid(valueStart, lineEnd - valueStart).trimmed().toInt();
+		const qsizetype lineEnd{ lower.indexOf("\r\n", lineStart) };	// 从这一行开头往后找，得到这一行的结尾
+		const qsizetype valueStart{ lineStart + 15 };	// 值的起点："content-length:" 共 15 个字符
+		contentLength = lower.mid(valueStart, lineEnd - valueStart).trimmed().toInt();	// 截出值、去掉空格、转成整数
 	}
-	const qsizetype bodyStart{ headerEnd + 4 };
-	const qsizetype lengthIfEnough{ contentLength };
+	const qsizetype bodyStart{ headerEnd + 4 };	// 请求体的起点：跳过 "\r\n\r\n" 这 4 个字符
+	const qsizetype lengthIfEnough{ contentLength };	// 请求体应有的长度（就是 contentLength）
 	if (data.size() < bodyStart + lengthIfEnough)
 	{
-		return false;
+		return false;	// 总长度还不够，请求体没收齐
 	}
 	else
 	{
-		socket->readAll();
-		body = data.mid(bodyStart, contentLength);
+		socket->readAll();	// 收齐了：把数据真正从 socket 里取走，避免以后被重复处理
+		body = data.mid(bodyStart, contentLength);	// 从偷看到的数据里截出请求体，通过引用交给调用者
 		return true;
 	}
 }
+
+// 构造函数：程序启动时执行一次，只负责"设置"和"登记"，真正处理事件要等事件循环开始
 Petwindow::Petwindow()
 {
-	qreal dpr{ devicePixelRatioF() };
-	resize(kPetSize, kPetSize);
-	m_idle = loadPetImage(":/assets/pet/idle.png", dpr);
+	qreal dpr{ devicePixelRatioF() };	// 当前屏幕的缩放比例（继承自 QWidget）
+	resize(kPetSize, kPetSize);	// 窗口大小（逻辑像素）
+	m_idle = loadPetImage(":/assets/pet/idle.png", dpr);		// 图片只在这里加载一次，paintEvent 里直接用
 	m_working = loadPetImage(":/assets/pet/working.png", dpr);
 	m_waiting = loadPetImage(":/assets/pet/waiting.png", dpr);
 	m_error = loadPetImage(":/assets/pet/error.png", dpr);
-	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);
-	setAttribute(Qt::WA_TranslucentBackground);
-	if (!m_server.listen(QHostAddress::LocalHost, kPort))
+	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint);	// 无边框 + 始终置顶；用 | 组合两个标志位
+	setAttribute(Qt::WA_TranslucentBackground);	// 背景透明：没画东西的地方完全透明，点击会穿透到后面的窗口
+	if (!m_server.listen(QHostAddress::LocalHost, kPort))	// 开始在 127.0.0.1:kPort 上监听，只接受本机的连接
 	{
-		qDebug() << "listen failed" << m_server.errorString();
+		qDebug() << "listen failed" << m_server.errorString();	// 监听失败（比如端口被占用）时打印原因
 	}
-	connect(&m_server, &QTcpServer::newConnection, this, [this]() 
+	// 登记：每当有新连接进来，就执行这个 lambda（[this]：捕获当前窗口，才能用 m_server）
+	connect(&m_server, &QTcpServer::newConnection, this, [this]()
 		{
-			QTcpSocket* socket{ m_server.nextPendingConnection() };
-			connect(socket, &QTcpSocket::readyRead, this, [socket]()
+			QTcpSocket* socket{ m_server.nextPendingConnection() };	// 取出这条新连接；是指针，因为 QObject 不能复制
+			// 登记：这条连接每次收到数据，就执行这个 lambda
+			// [socket]：复制的是指针，指向同一个 socket；[this]：捕获当前窗口，才能调用成员函数 handleHookEvent
+			connect(socket, &QTcpSocket::readyRead, this, [socket,this]()
 				{
-					QByteArray body;
+					QByteArray body;	// 用来接收请求体（由 tryReadyBody 填进去）
 					if (!tryReadyBody(socket, body))
 					{
-						return;
+						return;	// 还没收齐：结束这一次执行，等下一次 readyRead
 					}
-					qDebug().noquote() << body;
-					socket->write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");
-					socket->disconnectFromHost();
+					Petwindow::handleHookEvent(body);
+					socket->write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");	// 回复：200 成功、没有内容、回复完就关闭
+					socket->disconnectFromHost();	// 断开这条连接
 				});
+			// 连接断开后，在安全的时机删除 socket 对象，释放内存
 			connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
 		});
 }
-void Petwindow::paintEvent(QPaintEvent*)
+
+// 重画窗口：Qt 在窗口需要重画时自动调用（第一次显示、调用 update() 之后等）
+// 这里要尽量轻：只选一张已经加载好的图，画上去
+void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表示这个参数用不到
 {
-	QPainter painter(this);
-	painter.setRenderHint(QPainter::Antialiasing);
-	const QPixmap* pixmap{ &m_idle };
-	switch (m_state)
+	QPainter painter(this);	// 创建画笔，画在"我自己"这个窗口上；函数结束时析构，自动结束绘制
+	painter.setRenderHint(QPainter::Antialiasing);	// 抗锯齿（以前画圆时用的，画图片用不到）
+	const QPixmap* pixmap{ &m_idle };	// 指向这次要画的图片；常量指针：可以改指向，不能通过它改图片
+	switch (m_state)	// 根据当前状态选择图片
 	{
 	case PetState::Idle:
 		pixmap = &m_idle;
@@ -94,39 +114,49 @@ void Petwindow::paintEvent(QPaintEvent*)
 		pixmap = &m_error;
 		break;
 	}
-	painter.drawPixmap(0, 0, *pixmap);
+	painter.drawPixmap(0, 0, *pixmap);	// 从窗口左上角 (0, 0) 开始画；*pixmap 是解引用，得到图片本身
 }
+
+// 鼠标按下：左键记录拖动起点，右键关闭窗口（关闭最后一个窗口后 exec() 返回，程序退出）
 void Petwindow::mousePressEvent(QMouseEvent* event)
 {
-	if (event->button() == Qt::LeftButton)
+	if (event->button() == Qt::LeftButton)	// button()：这一次是哪个键触发的
 	{
-		m_dragOffset = event->position().toPoint();
+		m_dragOffset = event->position().toPoint();	// 记下鼠标在窗口里的位置（窗口坐标）
 	}
 	if (event->button() == Qt::RightButton)
 	{
-		close();
+		close();	// 关闭窗口
 	}
 }
+
+// 鼠标移动：按住左键时让窗口跟着鼠标走
 void Petwindow::mouseMoveEvent(QMouseEvent* event)
 {
-	if (event->buttons() & Qt::LeftButton)
+	if (event->buttons() & Qt::LeftButton)	// buttons()：此刻按住了哪些键（位掩码），用 & 判断左键是否按着
 	{
-		QPoint temp{ event->globalPosition().toPoint() - m_dragOffset };
-		move(temp);
+		QPoint temp{ event->globalPosition().toPoint() - m_dragOffset };	// 窗口左上角的新位置 = 鼠标的屏幕坐标 - 偏移量
+		move(temp);	// 把窗口移过去（继承自 QWidget）
 	}
 }
+
+// 切换状态：改状态的唯一入口，保证"改状态"和"重画"总是一起发生
 void Petwindow::setState(PetState state)
 {
 	m_state = state;
-	update();
+	update();	// 通知 Qt 稍后重画窗口（会触发 paintEvent），不要直接调用 paintEvent
 }
+
+// 查询当前状态：常函数，可以通过 const Petwindow& 调用
 PetState Petwindow::state() const
 {
 	return m_state;
 }
+
+// 键盘按下：数字键 1~4 手动切换 4 种状态，用来测试（要先点一下宠物让它获得焦点）
 void Petwindow::keyPressEvent(QKeyEvent* event)
 {
-	switch (event->key())
+	switch (event->key())	// key()：按下的是哪个键
 	{
 	case Qt::Key_1:
 		setState(PetState::Idle);
@@ -140,5 +170,29 @@ void Petwindow::keyPressEvent(QKeyEvent* event)
 	case Qt::Key_4:
 		setState(PetState::Error);
 		break;
+	}
+}
+
+// 处理 Claude Code 发来的一个 hook 事件：取出 hook_event_name，切换到对应的状态
+// 不认识的事件（或者 JSON 解析失败得到空字符串）不做任何处理，宠物保持原来的状态
+void Petwindow::handleHookEvent(const QByteArray& body)
+{
+	const QString eventName{ QJsonDocument::fromJson(body).object().value("hook_event_name").toString() };
+	qDebug().noquote() << eventName;
+	if (eventName == "UserPromptSubmit" || eventName == "PreToolUse" || eventName == "PostToolUse" )
+	{
+		setState(PetState::Working);
+	}
+	if (eventName == "Stop")
+	{
+		setState(PetState::Idle);
+	}
+	if (eventName == "PermissionRequest")
+	{
+		setState(PetState::WaitingPermission);
+	}
+	if (eventName == "StopFailure")
+	{
+		setState(PetState::Error);
 	}
 }
