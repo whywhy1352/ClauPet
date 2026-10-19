@@ -20,7 +20,7 @@ protected:
 	void mousePressEvent(QMouseEvent* event) override;	// 鼠标按下时：左键记录拖动起点，右键弹出菜单
 	void mouseMoveEvent(QMouseEvent* event) override;	// 鼠标移动时：按住左键就拖动窗口
 	void keyPressEvent(QKeyEvent* event) override;		// 键盘按下时：数字键 1~4 手动切换状态（测试用）
-	void mouseReleaseEvent(QMouseEvent* event) override;	// 鼠标松开时：左键拖动结束，保存当前位置
+	void mouseReleaseEvent(QMouseEvent* event) override;	// 鼠标松开时：左键点击切换到 Claude 窗口，拖动结束则保存当前位置
 private:
 	QPoint m_dragOffset;				// 左键按下时，鼠标在窗口里的位置；拖动时用它保持相对位置不变
 	PetState m_state{ PetState::Idle };	// 当前状态，程序启动时是空闲
@@ -33,8 +33,10 @@ private:
 	// m_tray 记着 m_menu 的地址，所以 m_menu 必须先声明（后析构），保证托盘销毁之前菜单一直有效
 	QMenu m_menu;						// 右键菜单：托盘图标和宠物本身共用
 	QSystemTrayIcon m_tray;				// 任务栏右下角的托盘图标
+	QPoint m_pressGlobalPos;			// 左键按下时鼠标的屏幕坐标；松开时比较距离，区分点击和拖动
 	void handleHookEvent(const QByteArray& body);	// 解析请求体里的 JSON，更新对应会话的状态，再刷新宠物
 	// 每个 Claude Code 会话各自的状态：会话 ID → 状态。同时开着多个会话时，靠它避免互相覆盖
 	std::map<QString, PetState> m_sessionStates;
 	PetState combinedState()const;	// 合并所有会话的状态，返回最紧急的那个；常函数，只读不改
+	void activateClaudeWindow();	// 把 Claude 桌面应用的窗口切换到最前面（用 Windows API）
 };

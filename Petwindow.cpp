@@ -10,6 +10,12 @@
 #include<QIcon>			// 托盘图标用的图标类
 #include<QSettings>		// 保存配置（宠物的位置）；在 Windows 上存在注册表里，程序关掉后数据还在
 #include<algorithm>		// std::max_element：在多个会话里找出最紧急的状态
+// Windows API：FindWindowW、SetForegroundWindow 等，用来把 Claude 窗口切换到前台
+// NOMINMAX 必须写在 #include 之前：否则 windows.h 会定义名叫 min、max 的宏，弄坏 std::min / std::max
+// 只在这个 .cpp 里包含，不放进头文件，免得包含 Petwindow.h 的文件都被这些宏影响
+#define NOMINMAX
+#include<windows.h>
+
 constexpr quint16 kPort{ 52790 };	// 监听的端口号；Claude Code 的 HTTP hook 要发到这个端口
 constexpr int kPetSize{ 180 };		// 宠物窗口和图片的大小，单位是逻辑像素（会乘上屏幕缩放比例）
 
@@ -225,6 +231,7 @@ void Petwindow::mousePressEvent(QMouseEvent* event)
 	if (event->button() == Qt::LeftButton)	// button()：这一次是哪个键触发的
 	{
 		m_dragOffset = event->position().toPoint();	// 记下鼠标在窗口里的位置（窗口坐标）
+		m_pressGlobalPos = event->globalPosition().toPoint();	// 记下按下时的屏幕坐标，松开时用来判断是点击还是拖动
 	}
 	if (event->button() == Qt::RightButton)
 	{
@@ -300,14 +307,49 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 	setState(combinedState());	// 先算出合并后的状态，再通过 setState 统一修改并重画
 }
 
-// 鼠标松开：左键松开说明一次拖动结束了，把当前位置保存下来，下次启动时恢复
-// 选在这里保存，而不是在 mouseMoveEvent 里：拖一次只写一次，不会频繁写注册表
+// 把 Claude 桌面应用的窗口切换到最前面（左键单击宠物时调用）
+// 已经在最前面时 SetForegroundWindow 什么都不会改变；Claude 没开时什么都不做
+void Petwindow::activateClaudeWindow()
+{
+	// 按"窗口类名 + 标题"查找 Claude 的主窗口；找不到返回 nullptr
+	// Claude 桌面应用是用 Electron 做的，窗口类名和 Chrome 一样是 Chrome_WidgetWin_1（已实测）
+	// L"..." 是宽字符串（wchar_t，UTF-16），名字以 W 结尾的 Windows API 都要用它
+	HWND hwnd{ FindWindowW(L"Chrome_WidgetWin_1", L"Claude") };
+	if (hwnd == nullptr)
+	{
+		return;	// Claude 没开：什么都不做
+	}
+	else
+	{
+		if (IsIconic(hwnd) != 0)	// 窗口被最小化了（返回非零）
+		{
+			ShowWindow(hwnd, SW_RESTORE);	// 先还原
+		}
+		// 无论之前是否最小化，都要切换到前台（之前写在 if 里面，导致窗口只是被挡住时不会切换）
+		// 刚点击了宠物，我们的程序处在前台，Windows 才允许我们把别的窗口切到前台
+		SetForegroundWindow(hwnd);
+	}
+}
+
+// 鼠标松开：判断这次左键操作是"点击"还是"拖动"
+// 点击：切换到 Claude 窗口
+// 拖动：拖动结束了，把当前位置保存下来，下次启动时恢复
+// 选在这里保存，而不是在 mouseMoveEvent 里：拖一次只写一次，不会频繁写注册表；单纯点击也不会写
 void Petwindow::mouseReleaseEvent(QMouseEvent* event)
 {
 	if (event->button() == Qt::LeftButton)
 	{
-		QSettings settings{ "ClaudePet","ClaudePet" };	// 和构造函数里读取时用同样的名字
-		settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）
+		// 按下到松开，鼠标移动的距离（横向 + 纵向，曼哈顿距离）小于系统规定的拖动阈值（默认 10 像素），就算点击
+		// 用屏幕坐标计算：拖动时窗口本身在移动，窗口坐标的参照点会变
+		if ((m_pressGlobalPos - event->globalPosition().toPoint()).manhattanLength() < QApplication::startDragDistance())
+		{
+			activateClaudeWindow();	// 点击
+		}
+		else
+		{
+			QSettings settings{ "ClaudePet","ClaudePet" };	// 和构造函数里读取时用同样的名字
+			settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）
+		}
 	}
 }
 
