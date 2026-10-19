@@ -9,6 +9,7 @@
 #include<QApplication>	// qApp 和 QApplication::quit：点"退出"时结束整个程序
 #include<QIcon>			// 托盘图标用的图标类
 #include<QSettings>		// 保存配置（宠物的位置）；在 Windows 上存在注册表里，程序关掉后数据还在
+#include<algorithm>		// std::max_element：在多个会话里找出最紧急的状态
 constexpr quint16 kPort{ 52790 };	// 监听的端口号；Claude Code 的 HTTP hook 要发到这个端口
 constexpr int kPetSize{ 180 };		// 宠物窗口和图片的大小，单位是逻辑像素（会乘上屏幕缩放比例）
 
@@ -56,6 +57,52 @@ static bool tryReadyBody(QTcpSocket* socket, QByteArray& body)
 		body = data.mid(bodyStart, contentLength);	// 从偷看到的数据里截出请求体，通过引用交给调用者
 		return true;
 	}
+}
+
+// 状态的"紧急程度"：数字越大越紧急，多个会话合并时显示最紧急的那个
+// 不直接比较枚举值：enum class 不能当数字比较，而且声明顺序也不代表优先级
+static int urgency(PetState state)
+{
+	switch (state)
+	{
+	case PetState::Idle:
+		return 0;
+	case PetState::Working:
+		return 1;
+	case PetState::NeedsInput:
+		return 2;
+	case PetState::Error:
+		return 3;	// 出错的优先级最高（有意的设计）
+	}
+	return 0;	// 走不到这里（4 种状态都已列出），只是为了让编译器知道每条路径都有返回值
+}
+
+// 把一个 hook 事件名换算成对应的状态
+// 认识这个事件：把状态存进 state（输出参数），返回 true；不认识：返回 false，state 不变
+// 注意：SessionEnd 不在这里处理，它不是一种状态，而是"这个会话结束了"，由 handleHookEvent 直接删除
+static bool stateHookEvent(const QString& eventName, PetState& state)
+{
+	if (eventName == "UserPromptSubmit" || eventName == "PreToolUse" || eventName == "PostToolUse")
+	{
+		state = PetState::Working;
+		return true;
+	}
+	if (eventName == "Stop")
+	{
+		state = PetState::Idle;
+		return true;
+	}
+	if (eventName == "PermissionRequest" )
+	{
+		state = PetState::NeedsInput;
+		return true;
+	}
+	if (eventName == "StopFailure")
+	{
+		state = PetState::Error;
+		return true;
+	}
+	return false;
 }
 
 // 构造函数：程序启动时执行一次，只负责"设置"和"登记"，真正处理事件要等事件循环开始
@@ -152,7 +199,7 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 	case PetState::Working:
 		pixmap = &m_working;
 		break;
-	case PetState::WaitingPermission:
+	case PetState::NeedsInput:
 		pixmap = &m_waiting;
 		break;
 	case PetState::Error:
@@ -210,7 +257,7 @@ void Petwindow::keyPressEvent(QKeyEvent* event)
 		setState(PetState::Working);
 		break;
 	case Qt::Key_3:
-		setState(PetState::WaitingPermission);
+		setState(PetState::NeedsInput);
 		break;
 	case Qt::Key_4:
 		setState(PetState::Error);
@@ -218,28 +265,27 @@ void Petwindow::keyPressEvent(QKeyEvent* event)
 	}
 }
 
-// 处理 Claude Code 发来的一个 hook 事件：取出 hook_event_name，切换到对应的状态
-// 不认识的事件（或者 JSON 解析失败得到空字符串）不做任何处理，宠物保持原来的状态
+// 处理 Claude Code 发来的一个 hook 事件：
+// 1. 更新发出这个事件的那个会话的状态（会话结束就从记录里删掉）
+// 2. 把所有会话的状态合并，决定宠物显示什么
+// 不认识的事件（或者 JSON 解析失败得到空字符串）不会改变任何会话的状态
 void Petwindow::handleHookEvent(const QByteArray& body)
 {
-	const QString eventName{ QJsonDocument::fromJson(body).object().value("hook_event_name").toString() };
-	qDebug().noquote() << eventName;
-	if (eventName == "UserPromptSubmit" || eventName == "PreToolUse" || eventName == "PostToolUse" )
+	const QJsonObject json{ QJsonDocument::fromJson(body).object() };		// 解析成 JSON 对象
+	const QString eventName{ json.value("hook_event_name").toString() };	// 发生了什么事
+	const QString sessionId{ json.value("session_id").toString() };		// 是哪个会话发来的
+	qDebug().noquote() << eventName;	// 调试用：在 VS 的"输出"窗口里能看到
+	qDebug().noquote() << sessionId;
+	PetState newState{ PetState::Idle };	// 接收 stateHookEvent 换算出的状态（输出参数）
+	if (eventName == "SessionEnd")
 	{
-		setState(PetState::Working);
+		m_sessionStates.erase(sessionId);	// 会话结束：从记录里删掉（删一个不存在的键也是安全的）
 	}
-	if (eventName == "Stop")
+	else if(stateHookEvent(eventName, newState))	// 认识这个事件才更新
 	{
-		setState(PetState::Idle);
+		m_sessionStates[sessionId] = newState;	// [] 找不到这个会话时会自动插入，正好用来记录新会话
 	}
-	if (eventName == "PermissionRequest")
-	{
-		setState(PetState::WaitingPermission);
-	}
-	if (eventName == "StopFailure")
-	{
-		setState(PetState::Error);
-	}
+	setState(combinedState());	// 先算出合并后的状态，再通过 setState 统一修改并重画
 }
 
 // 鼠标松开：左键松开说明一次拖动结束了，把当前位置保存下来，下次启动时恢复
@@ -251,4 +297,20 @@ void Petwindow::mouseReleaseEvent(QMouseEvent* event)
 		QSettings settings{ "ClaudePet","ClaudePet" };	// 和构造函数里读取时用同样的名字
 		settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）
 	}
+}
+
+// 合并所有会话的状态：返回其中最紧急的一个（按 urgency 比较）
+// 常函数：只读不改。这里不能用 m_sessionStates[...] 查询，因为 [] 找不到时会插入新元素，属于修改
+PetState Petwindow::combinedState()const
+{
+	if (m_sessionStates.empty())
+	{
+		return PetState::Idle;	// 没有任何会话：空闲。必须先判断，否则 max_element 会返回 end()，不能解引用
+	}
+	// max_element 在 map 上遍历，每个元素是"会话 ID → 状态"的键值对，所以比较的是 .second
+	// 返回指向最紧急那一项的迭代器，->second 取出它的状态
+	return std::max_element(m_sessionStates.begin(), m_sessionStates.end(), [](const auto& a, const auto& b)
+		{
+			return urgency(a.second) < urgency(b.second);
+		})->second;
 }

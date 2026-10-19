@@ -6,6 +6,6 @@ enum class PetState
 {
 	Idle,				// 空闲：程序刚启动、Claude 回复完毕（Stop）时
 	Working,			// 工作中：你发出消息、Claude 调用工具时
-	WaitingPermission,	// 等待授权：Claude 要做的事需要你批准时
+	NeedsInput,			// 需要你介入：Claude 申请权限（PermissionRequest）、或向你提问时
 	Error,				// 出错：API 出错（StopFailure）时
 };

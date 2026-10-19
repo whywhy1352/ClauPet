@@ -5,6 +5,7 @@
 #include<QTcpServer>	// 成员 m_server 是 QTcpServer 对象，需要它的完整定义
 #include<QSystemTrayIcon>	// 成员 m_tray 是 QSystemTrayIcon 对象，需要它的完整定义
 #include<QMenu>			// 成员 m_menu 是 QMenu 对象，需要它的完整定义
+#include<map>			// 成员 m_sessionStates 是 std::map
 
 // 宠物窗口：继承 QWidget，负责显示宠物、响应鼠标键盘、接收 Claude Code 发来的事件
 class Petwindow : public QWidget
@@ -32,5 +33,8 @@ private:
 	// m_tray 记着 m_menu 的地址，所以 m_menu 必须先声明（后析构），保证托盘销毁之前菜单一直有效
 	QMenu m_menu;						// 右键菜单：托盘图标和宠物本身共用
 	QSystemTrayIcon m_tray;				// 任务栏右下角的托盘图标
-	void handleHookEvent(const QByteArray& body);	// 解析请求体里的 JSON，按 hook_event_name 切换状态
+	void handleHookEvent(const QByteArray& body);	// 解析请求体里的 JSON，更新对应会话的状态，再刷新宠物
+	// 每个 Claude Code 会话各自的状态：会话 ID → 状态。同时开着多个会话时，靠它避免互相覆盖
+	std::map<QString, PetState> m_sessionStates;
+	PetState combinedState()const;	// 合并所有会话的状态，返回最紧急的那个；常函数，只读不改
 };
