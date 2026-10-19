@@ -77,11 +77,21 @@ static int urgency(PetState state)
 	return 0;	// 走不到这里（4 种状态都已列出），只是为了让编译器知道每条路径都有返回值
 }
 
-// 把一个 hook 事件名换算成对应的状态
+// 根据 hook 事件名（以及工具名）换算出对应的状态
+// eventName：hook_event_name；toolName：tool_name，只有工具相关的事件才有，其他事件是空字符串
 // 认识这个事件：把状态存进 state（输出参数），返回 true；不认识：返回 false，state 不变
 // 注意：SessionEnd 不在这里处理，它不是一种状态，而是"这个会话结束了"，由 handleHookEvent 直接删除
-static bool stateHookEvent(const QString& eventName, PetState& state)
+// 注意：规则从上到下依次判断，先匹配的先返回，所以越特殊的规则要写得越靠前
+static bool stateHookEvent(const QString& eventName, const QString& toolName, PetState& state)
 {
+	// Claude 准备向你提问（AskUserQuestion 工具）：需要你介入
+	// 实测提问时还会再触发一次 PermissionRequest，这条是保险：万一以后不再触发，照样能举手
+	// 必须放在下面"PreToolUse → 工作中"之前，否则永远轮不到它
+	if (eventName == "PreToolUse" && toolName == "AskUserQuestion")
+	{
+		state = PetState::NeedsInput;
+		return true;
+	}
 	if (eventName == "UserPromptSubmit" || eventName == "PreToolUse" || eventName == "PostToolUse")
 	{
 		state = PetState::Working;
@@ -274,14 +284,16 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 	const QJsonObject json{ QJsonDocument::fromJson(body).object() };		// 解析成 JSON 对象
 	const QString eventName{ json.value("hook_event_name").toString() };	// 发生了什么事
 	const QString sessionId{ json.value("session_id").toString() };		// 是哪个会话发来的
+	const QString toolName{ json.value("tool_name").toString() };			// 调用的是哪个工具（没有就是空字符串）
 	qDebug().noquote() << eventName;	// 调试用：在 VS 的"输出"窗口里能看到
 	qDebug().noquote() << sessionId;
+	qDebug().noquote() << toolName;
 	PetState newState{ PetState::Idle };	// 接收 stateHookEvent 换算出的状态（输出参数）
 	if (eventName == "SessionEnd")
 	{
 		m_sessionStates.erase(sessionId);	// 会话结束：从记录里删掉（删一个不存在的键也是安全的）
 	}
-	else if(stateHookEvent(eventName, newState))	// 认识这个事件才更新
+	else if (stateHookEvent(eventName, toolName, newState))	// 认识这个事件才更新
 	{
 		m_sessionStates[sessionId] = newState;	// [] 找不到这个会话时会自动插入，正好用来记录新会话
 	}
