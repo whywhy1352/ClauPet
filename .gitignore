@@ -4,3 +4,7 @@ build/
 CMakeUserPresets.json
 references/
 *.zip
+promo/*.mp4
+promo/*.wav
+promo/*.log
+promo/stills/

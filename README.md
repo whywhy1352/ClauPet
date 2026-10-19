@@ -2,6 +2,8 @@
 
 [中文](#中文) | [English](#english)
 
+https://github.com/user-attachments/assets/90fec8aa-7c5c-4e0a-9311-8e61b5b5b2b7
+
 <p align="center">
   <img src="docs/screenshot.png" width="800" alt="ClauPet：Claude 申请权限时，宠物举手提醒你 / ClauPet raises her hand when Claude needs your approval">
 </p>
