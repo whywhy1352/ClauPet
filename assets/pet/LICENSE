@@ -1,0 +1,68 @@
+ClauPet character artwork / ClauPet 角色图片
+================================================================================
+
+Scope / 适用范围
+--------------------------------------------------------------------------------
+All image files in this directory (assets/pet/), including the files in its
+subdirectories (earlier design versions).
+
+本目录（assets/pet/）下的所有图片，包括子目录中的早期设计版本。
+
+
+License / 许可协议
+--------------------------------------------------------------------------------
+Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International
+(CC BY-NC-SA 4.0)
+
+  Summary / 简介: https://creativecommons.org/licenses/by-nc-sa/4.0/
+  Legal code / 法律文本: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
+
+You may share and adapt these images, provided that:
+  - Attribution: you give appropriate credit (see below), provide a link to the
+    license, and indicate if changes were made;
+  - NonCommercial: you do not use them for commercial purposes;
+  - ShareAlike: if you remix, transform, or build upon them, you distribute your
+    contributions under the same license.
+
+在满足以下条件的前提下，你可以分享和改编这些图片：
+  - 署名：注明出处（见下文），附上许可协议链接，并说明是否做了修改；
+  - 非商业性使用：不得用于商业目的；
+  - 相同方式共享：如果你对它们进行了再混合、转换或二次创作，必须以相同的许可协议发布。
+
+These images are NOT covered by the MIT License of the ClauPet source code.
+这些图片不适用 ClauPet 源代码的 MIT 许可证。
+
+
+Attribution / 署名
+--------------------------------------------------------------------------------
+Original character design / 原作角色设计:
+  Title / 作品名: 《Claude 拟人立绘·橘白礼服ver》
+  Author / 作者:  ZipZipPipe
+  Source / 来源:  https://蓝色大肥鱼.com/works/claude202610030001.html
+                  (https://xn--pssy23gqgbz2d718b.com/works/claude202610030001.html)
+  License / 许可: CC BY-NC-SA 4.0 (confirmed by the author / 经作者确认)
+
+Changes / 修改说明:
+  The chibi (two-heads-tall) desktop-pet images in this directory were created
+  by whywhy1352 with AI image generation tools, using the original design above
+  as a reference, in four expressions/poses (idle, working, waiting, error).
+  They are derivative works and are released under the same CC BY-NC-SA 4.0
+  license, with the author's permission.
+
+  本目录中的 Q 版（两头身）桌宠图片，由 whywhy1352 以上述原作为参考、借助 AI 绘图工具
+  创作，共四种表情/姿势（空闲、工作中、等待、出错）。它们属于衍生作品，经原作者同意，
+  以相同的 CC BY-NC-SA 4.0 协议发布。
+
+Suggested attribution when reusing / 转载或使用时的建议署名:
+  "ClauPet character art by whywhy1352, based on a character design by
+   ZipZipPipe, licensed under CC BY-NC-SA 4.0."
+  「ClauPet 角色图片：whywhy1352，基于 ZipZipPipe 的角色设计，采用 CC BY-NC-SA 4.0 许可。」
+
+
+Trademark notice / 商标说明
+--------------------------------------------------------------------------------
+"Claude" is a trademark of Anthropic, PBC. This artwork and the ClauPet project
+are not affiliated with, endorsed by, or sponsored by Anthropic.
+
+"Claude" 是 Anthropic, PBC 的商标。本图片及 ClauPet 项目与 Anthropic 无关，
+未获得 Anthropic 的认可或赞助。

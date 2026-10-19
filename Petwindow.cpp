@@ -18,6 +18,9 @@
 
 constexpr quint16 kPort{ 52790 };	// 监听的端口号；Claude Code 的 HTTP hook 要发到这个端口
 constexpr int kPetSize{ 180 };		// 宠物窗口和图片的大小，单位是逻辑像素（会乘上屏幕缩放比例）
+// QSettings 的组织名和程序名，决定配置存在注册表的哪里：HKEY_CURRENT_USER\Software\ClauPet\ClauPet
+// 读取和保存必须用同样的名字，所以定义成常量，只在这一处修改
+constexpr const char* kSettingsName{ "ClauPet" };
 
 // 加载一张宠物图片，并缩放到适合当前屏幕的大小
 // path：资源路径，比如 ":/assets/pet/idle.png"
@@ -127,9 +130,9 @@ Petwindow::Petwindow()
 	qreal dpr{ devicePixelRatioF() };	// 当前屏幕的缩放比例（继承自 QWidget）
 	resize(kPetSize, kPetSize);	// 窗口大小（逻辑像素）
 	// ---- 恢复上次的位置 ----
-	// 两个参数（组织名、程序名）决定数据存在注册表的哪里：HKEY_CURRENT_USER\Software\ClaudePet\ClaudePet
+	// 两个参数（组织名、程序名）决定数据存在注册表的哪里，见文件顶部的 kSettingsName
 	// 必须和 mouseReleaseEvent 里保存时用的名字一样，才能读到同一份数据
-	QSettings settings{ "ClaudePet","ClaudePet" };
+	QSettings settings{ kSettingsName, kSettingsName };
 	if (settings.contains("pos"))	// 第一次运行时还没存过，就跳过，用默认位置
 	{
 		const QPoint savedPos{ settings.value("pos").toPoint() };	// 上次保存的窗口左上角位置
@@ -195,7 +198,7 @@ Petwindow::Petwindow()
 
 	// ---- 托盘图标（任务栏右下角）----
 	m_tray.setIcon(QIcon(m_idle));	// 用空闲状态的图片当图标
-	m_tray.setToolTip("Claude pet");	// 鼠标悬停时显示的文字
+	m_tray.setToolTip("ClauPet");	// 鼠标悬停时显示的文字
 	m_tray.setContextMenu(&m_menu);	// 右键托盘图标时弹出这个菜单（托盘会记住菜单的地址）
 	m_tray.show();
 }
@@ -347,7 +350,7 @@ void Petwindow::mouseReleaseEvent(QMouseEvent* event)
 		}
 		else
 		{
-			QSettings settings{ "ClaudePet","ClaudePet" };	// 和构造函数里读取时用同样的名字
+			QSettings settings{ kSettingsName, kSettingsName };	// 和构造函数里读取时用同样的名字
 			settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）
 		}
 	}
