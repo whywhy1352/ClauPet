@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once	// 防止这个头文件在同一个 .cpp 里被重复包含
 #include<QWidget>		// 基类 QWidget：Qt 的"窗口/控件"类
 #include"Petstate.h"	// 宠物状态枚举 PetState

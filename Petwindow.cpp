@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include<QPainter>		// QPainter：在窗口上画画的"画笔"
 #include"Petwindow.h"	// 本文件实现的类
 #include<QMouseEvent>	// 鼠标事件：要调用它的成员函数，需要完整定义

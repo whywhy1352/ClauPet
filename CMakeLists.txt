@@ -1,3 +1,4 @@
+# SPDX-License-Identifier: MIT
 cmake_minimum_required(VERSION 3.21)	# 要求的最低 CMake 版本
 project(ClauPet LANGUAGES CXX)			# 项目名，使用 C++
 

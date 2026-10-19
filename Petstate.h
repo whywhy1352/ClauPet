@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #pragma once	// 防止这个头文件在同一个 .cpp 里被重复包含
 
 // 宠物的 4 种状态。用 enum class（强类型枚举）：

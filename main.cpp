@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: MIT
 #include <QApplication>	// QApplication：整个 Qt 程序的"总管"，负责事件循环
 #include "Petwindow.h"	// 我们自己的宠物窗口类
 
