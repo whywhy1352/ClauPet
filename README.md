@@ -3,6 +3,10 @@
 [中文](#中文) | [English](#english)
 
 <p align="center">
+  <img src="docs/screenshot.png" width="800" alt="ClauPet：Claude 申请权限时，宠物举手提醒你 / ClauPet raises her hand when Claude needs your approval">
+</p>
+
+<p align="center">
   <img src="assets/pet/idle.png" width="150" alt="idle">
   <img src="assets/pet/working.png" width="150" alt="working">
   <img src="assets/pet/waiting.png" width="150" alt="waiting">
