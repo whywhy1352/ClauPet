@@ -11,6 +11,7 @@
 #include<QIcon>			// 托盘图标用的图标类
 #include<QSettings>		// 保存配置（宠物的位置）；在 Windows 上存在注册表里，程序关掉后数据还在
 #include<algorithm>		// std::max_element：在多个会话里找出最紧急的状态
+#include<QTimer>			// QTimer::singleShot：过一段时间后执行一次（出错状态自动恢复）
 // Windows API：FindWindowW、SetForegroundWindow 等，用来把 Claude 窗口切换到前台
 // NOMINMAX 必须写在 #include 之前：否则 windows.h 会定义名叫 min、max 的宏，弄坏 std::min / std::max
 // 只在这个 .cpp 里包含，不放进头文件，免得包含 Petwindow.h 的文件都被这些宏影响
@@ -22,6 +23,7 @@ constexpr int kPetSize{ 180 };		// 宠物窗口和图片的大小，单位是逻
 // QSettings 的组织名和程序名，决定配置存在注册表的哪里：HKEY_CURRENT_USER\Software\ClauPet\ClauPet
 // 读取和保存必须用同样的名字，所以定义成常量，只在这一处修改
 constexpr const char* kSettingsName{ "ClauPet" };
+constexpr int kErrorRecoverMs{ 8000 };	// 出错状态保持多久（毫秒）后自动恢复为空闲
 
 // 加载一张宠物图片，并缩放到适合当前屏幕的大小
 // path：资源路径，比如 ":/assets/pet/idle.png"
@@ -307,6 +309,26 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 	else if (stateHookEvent(eventName, toolName, newState))	// 认识这个事件才更新
 	{
 		m_sessionStates[sessionId] = newState;	// [] 找不到这个会话时会自动插入，正好用来记录新会话
+		// 出错后不会再有后续事件（Stop 不会来），所以安排一个定时器，过一会儿自动恢复为空闲
+		if (newState == PetState::Error)
+		{
+			// singleShot 立刻返回，不会让程序卡住；时间到了，事件循环才执行这个 lambda
+			// [sessionId] 必须按值捕获：lambda 是延迟执行的，那时 handleHookEvent 早已返回，
+			// 局部变量 sessionId 已经销毁，按引用捕获会变成悬空引用
+			// 上下文对象 this：如果窗口在这段时间里被销毁，lambda 就不会执行
+			QTimer::singleShot(kErrorRecoverMs, this, [this, sessionId]()
+				{
+					// 用 find 而不是 []：如果这个会话在等待期间已经结束（被 erase 了），
+					// [] 会把它重新插回来，变成一个永远不会被清理的"幽灵会话"
+					auto it = m_sessionStates.find(sessionId);
+					// 还要确认它仍然是出错状态：等待期间它可能已经重新开始工作，不能误改成空闲
+					if (it != m_sessionStates.end() && it->second == PetState::Error)
+					{
+						m_sessionStates[sessionId] = PetState::Idle;	// 已确认存在，这里的 [] 不会插入新元素
+					}
+					setState(combinedState());	// 重新合并所有会话的状态，刷新宠物
+				});
+		}
 	}
 	setState(combinedState());	// 先算出合并后的状态，再通过 setState 统一修改并重画
 }
