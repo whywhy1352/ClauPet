@@ -1,0 +1,773 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>ClauPet Intro</title>
+<style>
+:root{
+  --cream:#FBF3E8; --cream2:#F4E3CF; --orange:#E8743B; --orange-d:#C95A25;
+  --brown:#3B2A20; --muted:#8A7363; --line:#E7D5C2;
+  --idle:#5FA884; --working:#4F86D0; --waiting:#EE9A1A; --error:#DD5757;
+  --zh:"Microsoft YaHei","Segoe UI",sans-serif;
+  --en:"Segoe UI","Microsoft YaHei",sans-serif;
+  --mono:"Cascadia Mono",Consolas,monospace;
+}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#1b1410;overflow:hidden}
+#stage{position:absolute;left:0;top:0;width:1920px;height:1080px;overflow:hidden;
+  background:var(--cream);transform-origin:0 0;font-family:var(--zh);color:var(--brown)}
+.scene{position:absolute;inset:0;opacity:0}
+.abs{position:absolute}
+img{display:block}
+.pet{position:absolute}
+.pet .inner{position:absolute;inset:0;transform-origin:50% 96%}
+.pet img{position:absolute;inset:0;width:100%;height:100%;opacity:0}
+.chip{position:absolute;display:flex;align-items:center;gap:10px;padding:8px 18px;border-radius:999px;
+  background:#fff;box-shadow:0 6px 20px rgba(59,42,32,.15);font-size:24px;font-weight:700;white-space:nowrap;
+  transform:translateX(-50%)}
+.chip .dot{width:14px;height:14px;border-radius:50%}
+.chip .en{font-family:var(--en);font-weight:600;color:var(--muted);font-size:20px}
+
+/* caption */
+#cap{position:absolute;left:50%;bottom:84px;transform:translateX(-50%);z-index:50;text-align:center;white-space:nowrap;
+  background:rgba(43,30,22,.86);color:#fff;border-radius:22px;padding:16px 36px 18px;max-width:1180px;opacity:0;
+  box-shadow:0 12px 40px rgba(0,0,0,.25)}
+#cap .zh{font-size:36px;font-weight:700;letter-spacing:1px}
+#cap .en{font-family:var(--en);font-size:24px;color:#F3D9C2;margin-top:4px}
+
+/* ---------- S1 ---------- */
+#s1{background:radial-gradient(circle at 30% 55%,#FFE7CF 0,#FBF3E8 45%,#F6E7D6 100%)}
+.blob{position:absolute;border-radius:50%;filter:blur(2px)}
+#title{position:absolute;left:930px;top:330px}
+#title .big{font-family:var(--en);font-weight:800;font-size:168px;letter-spacing:-4px;line-height:1}
+#title .big span{display:inline-block}
+#title .sub{font-size:46px;font-weight:700;margin-top:28px}
+#title .suben{font-family:var(--en);font-size:32px;color:var(--muted);margin-top:8px}
+
+/* ---------- S2 ---------- */
+.win{position:absolute;background:#fff;border-radius:16px;box-shadow:0 24px 70px rgba(59,42,32,.22);overflow:hidden}
+.win .bar{height:44px;display:flex;align-items:center;padding:0 18px;gap:12px;font-family:var(--en);font-size:18px;
+  color:var(--muted);border-bottom:1px solid #F0E4D7;background:#FFFBF6}
+.win .bar .ctl{margin-left:auto;display:flex;gap:22px;color:#B7A595;font-size:18px}
+.win .bar .logo{width:22px;height:22px;border-radius:6px;background:var(--orange)}
+.bars div{height:16px;border-radius:8px;background:#EFE5DA;margin:14px 0}
+#s2text{position:absolute;left:1010px;top:250px;width:820px}
+.q{opacity:0}
+.q .zh{font-size:52px;font-weight:700;line-height:1.35}
+.q .en{font-family:var(--en);font-size:30px;color:var(--muted);margin-top:6px}
+.badge{display:inline-flex;align-items:center;gap:10px;padding:10px 18px;border-radius:12px;font-size:20px;font-weight:700}
+
+/* ---------- S3 demo ---------- */
+#s3{background:linear-gradient(135deg,#F8E2CB 0%,#F0D5D9 45%,#D9E0F0 100%)}
+#taskbar{position:absolute;left:0;right:0;bottom:0;height:60px;background:rgba(255,255,255,.72);
+  border-top:1px solid rgba(255,255,255,.9);display:flex;align-items:center;justify-content:center;gap:14px;z-index:20}
+#taskbar .ic{width:38px;height:38px;border-radius:9px;background:#fff;box-shadow:0 2px 6px rgba(0,0,0,.12)}
+#tray{position:absolute;right:24px;top:0;height:60px;display:flex;align-items:center;gap:16px;font-family:var(--en);font-size:18px;color:#5b4a3e}
+#tray .tp{width:34px;height:34px;border-radius:50%;background:#FFE9D6;overflow:hidden}
+#tray .tp img{width:100%;height:100%;object-fit:cover;object-position:50% 20%;transform:scale(1.6)}
+#claudeWin{left:90px;top:60px;width:1120px;height:820px;z-index:5}
+#chatView{position:absolute;left:0;right:0;top:44px;bottom:110px;overflow:hidden}
+#chatInner{position:absolute;left:0;right:0;top:0;padding:26px 40px}
+.item{display:none;margin-bottom:18px}
+.umsg{display:flex;justify-content:flex-end}
+.umsg div{background:#F4E6D8;border-radius:18px;padding:14px 22px;font-size:26px;max-width:70%}
+.tool{font-family:var(--mono);font-size:22px;color:#5b4a3e;display:flex;align-items:center;gap:14px}
+.tool .d{width:12px;height:12px;border-radius:50%;background:var(--orange)}
+.tool b{font-weight:700;color:var(--brown)}
+.tool .ok{color:#3E9B6A}
+.atext{font-size:26px;line-height:1.6}
+.perm{border:2px solid var(--waiting);border-radius:16px;padding:20px 24px;background:#FFF8EC}
+.perm .h{font-size:24px;font-weight:700}
+.perm .h span{font-family:var(--en);font-weight:500;color:var(--muted);font-size:20px;margin-left:10px}
+.perm .code{font-family:var(--mono);font-size:22px;background:#2E2420;color:#FBE7D3;border-radius:10px;padding:12px 16px;margin:14px 0}
+.btns{display:flex;gap:14px}
+.btn{padding:10px 26px;border-radius:10px;font-size:22px;font-weight:700;border:2px solid #D9C6B3;background:#fff}
+.btn.pri{background:var(--orange);border-color:var(--orange);color:#fff}
+.err{font-family:var(--mono);font-size:22px;color:#B43C3C;background:#FCE9E9;border-radius:10px;padding:12px 18px}
+#inputBox{position:absolute;left:40px;right:40px;bottom:26px;height:64px;border:2px solid var(--line);border-radius:16px;
+  display:flex;align-items:center;padding:0 22px;font-size:26px;background:#fff}
+#inputBox .ph{color:#B9A898}
+#inputBox .caret{display:inline-block;width:2px;height:30px;background:var(--brown);margin-left:2px;vertical-align:middle}
+#inputBox .send{margin-left:auto;width:40px;height:40px;border-radius:10px;background:var(--orange)}
+#browserWin{left:200px;top:110px;width:1180px;height:760px;z-index:6}
+#browserWin .url{margin:16px 24px;height:40px;border-radius:20px;background:#F3EDE7}
+.packet{position:absolute;z-index:40;padding:8px 16px;border-radius:12px;background:#2E2420;color:#fff;
+  font-family:var(--mono);font-size:20px;white-space:nowrap;transform:translate(-50%,-50%);opacity:0;
+  box-shadow:0 8px 24px rgba(0,0,0,.25)}
+.packet i{font-style:normal;color:#F3A06B;margin-right:8px}
+#cursor{position:absolute;z-index:60;width:34px;height:46px;opacity:0;pointer-events:none}
+#ripple{position:absolute;z-index:59;border:4px solid var(--orange);border-radius:50%;opacity:0;transform:translate(-50%,-50%)}
+
+/* ---------- S4 ---------- */
+.h2{position:absolute;left:0;right:0;top:90px;text-align:center}
+.h2 .zh{font-size:58px;font-weight:800}
+.h2 .en{font-family:var(--en);font-size:30px;color:var(--muted)}
+.box{position:absolute;background:#fff;border-radius:24px;box-shadow:0 18px 50px rgba(59,42,32,.14);padding:28px 32px}
+.box .t{font-family:var(--en);font-size:36px;font-weight:800}
+.box .s{font-family:var(--mono);font-size:22px;color:var(--muted);margin-top:4px}
+.evs{display:flex;flex-wrap:wrap;gap:10px;margin-top:22px}
+.ev{font-family:var(--mono);font-size:19px;padding:7px 12px;border-radius:9px;background:#F5ECE2;color:#6b5546}
+#arrow{position:absolute;left:760px;top:455px;width:400px;height:6px;background:#D9C3AE;border-radius:3px}
+#arrow:after{content:"";position:absolute;right:-6px;top:-11px;border-left:22px solid #D9C3AE;border-top:14px solid transparent;border-bottom:14px solid transparent}
+#arrowLbl{position:absolute;left:760px;width:400px;top:400px;text-align:center;font-family:var(--mono);font-size:22px;color:var(--orange-d);font-weight:700}
+#json{position:absolute;left:620px;top:645px;width:680px;background:#2E2420;color:#FBE7D3;border-radius:18px;padding:16px 30px;
+  font-family:var(--mono);font-size:24px;line-height:1.5;white-space:pre;box-shadow:0 18px 50px rgba(0,0,0,.25)}
+#json .k{color:#F3A06B}
+#json .v{color:#9FD3A8}
+#json .hl{background:rgba(243,160,107,.25);border-radius:6px;padding:0 4px}
+#dot{position:absolute;width:26px;height:26px;border-radius:50%;background:var(--orange);transform:translate(-50%,-50%);opacity:0;
+  box-shadow:0 0 0 8px rgba(232,116,59,.2)}
+#fizz{position:absolute;left:960px;top:458px;transform:translate(-50%,-50%);font-family:var(--en);font-size:56px;font-weight:800;color:var(--error);opacity:0}
+#offline{position:absolute;inset:0;border-radius:24px;background:rgba(240,234,228,.82);display:flex;align-items:center;justify-content:center;
+  font-size:34px;font-weight:800;color:#8b7b70;opacity:0}
+#stillOk{font-size:24px;font-weight:700;color:#3E9B6A;margin-top:18px;opacity:0}
+
+/* ---------- S5 ---------- */
+.sess{position:absolute;left:220px;width:720px;height:128px;background:#fff;border-radius:22px;box-shadow:0 14px 40px rgba(59,42,32,.12);
+  display:flex;align-items:center;padding:0 30px;gap:22px;border:3px solid transparent}
+.sess .nm{font-size:30px;font-weight:800}
+.sess .nm span{font-family:var(--en);font-weight:600;color:var(--muted);font-size:22px;margin-left:8px}
+.sess .task{font-size:22px;color:var(--muted);margin-top:4px}
+.sess .st{margin-left:auto;padding:8px 18px;border-radius:999px;color:#fff;font-size:22px;font-weight:700;white-space:nowrap}
+#prio{position:absolute;left:0;right:0;top:755px;display:flex;justify-content:center;align-items:center;gap:16px}
+#prio .p{padding:10px 22px;border-radius:999px;color:#fff;font-size:24px;font-weight:700}
+#prio .p span{font-family:var(--en);font-weight:500;font-size:19px;opacity:.9;margin-left:6px}
+#prio .gt{font-size:30px;color:var(--muted);font-weight:800}
+
+/* ---------- S6 ---------- */
+.tile{position:absolute;top:250px;width:390px;height:560px;background:#fff;border-radius:26px;box-shadow:0 18px 50px rgba(59,42,32,.13);overflow:hidden}
+.tile .ill{position:absolute;left:20px;right:20px;top:20px;height:340px;border-radius:18px;background:#F8EDE1;overflow:hidden}
+.tile .tz{position:absolute;left:28px;right:20px;top:385px;font-size:32px;font-weight:800}
+.tile .te{position:absolute;left:28px;right:24px;top:436px;font-family:var(--en);font-size:22px;color:var(--muted);line-height:1.4}
+.menu{position:absolute;background:#fff;border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.18);padding:8px 0;font-size:22px;width:190px}
+.menu div{padding:9px 20px}
+.menu div span{font-family:var(--en);color:var(--muted);font-size:18px;margin-left:8px}
+.checker{position:absolute;inset:0;background-color:#eee;
+  background-image:linear-gradient(45deg,#d8d8d8 25%,transparent 25%,transparent 75%,#d8d8d8 75%),linear-gradient(45deg,#d8d8d8 25%,transparent 25%,transparent 75%,#d8d8d8 75%);
+  background-size:40px 40px;background-position:0 0,20px 20px}
+
+/* ---------- S7 ---------- */
+#s7{background:radial-gradient(circle at 50% 35%,#FFE7CF 0,#FBF3E8 50%,#F6E7D6 100%)}
+#outro{position:absolute;left:0;right:0;top:560px;text-align:center}
+#outro .big{font-family:var(--en);font-weight:800;font-size:120px;letter-spacing:-3px;line-height:1}
+#outro .tag{font-size:38px;font-weight:700;margin-top:18px}
+#outro .tagen{font-family:var(--en);font-size:26px;color:var(--muted);margin-top:4px}
+#outro .spec{font-family:var(--en);font-size:26px;margin-top:30px;color:var(--brown)}
+#outro .url{font-family:var(--mono);font-size:28px;margin-top:14px;color:var(--orange-d);font-weight:700}
+#disc{position:absolute;left:0;right:0;bottom:36px;text-align:center;font-size:19px;color:var(--muted);line-height:1.5}
+#fadeAll{position:absolute;inset:0;background:var(--cream);opacity:0;z-index:100}
+</style>
+</head>
+<body>
+<div id="stage">
+
+<!-- ===== S1 标题 ===== -->
+<div class="scene" id="s1">
+  <div class="blob" id="b1" style="width:260px;height:260px;background:#FFD9B8;left:180px;top:120px"></div>
+  <div class="blob" id="b2" style="width:180px;height:180px;background:#F9C9C2;left:1600px;top:760px"></div>
+  <div class="blob" id="b3" style="width:120px;height:120px;background:#FFE3A8;left:1500px;top:150px"></div>
+  <div class="pet" id="pet1" style="left:200px;top:170px;width:700px;height:700px"></div>
+  <div id="title">
+    <div class="big" id="tBig"></div>
+    <div class="sub q" id="tSub">Claude Code 的桌面宠物</div>
+    <div class="suben q" id="tSubEn">A desktop companion for Claude Code</div>
+  </div>
+</div>
+
+<!-- ===== S2 痛点 ===== -->
+<div class="scene" id="s2">
+  <div class="win" id="s2claude" style="left:150px;top:260px;width:640px;height:420px">
+    <div class="bar"><div class="logo"></div>Claude Code<div class="ctl">— ☐ ✕</div></div>
+    <div style="padding:20px 30px" class="bars">
+      <div style="width:60%"></div><div style="width:85%"></div><div style="width:40%"></div>
+      <div class="badge" id="s2badge" style="background:#FFF1D9;color:#B4700A;margin-top:26px;height:auto">⏳ 等待你批准… <span style="font-family:var(--en);font-weight:500">Waiting for approval</span></div>
+    </div>
+  </div>
+  <div class="win" id="s2browser" style="left:240px;top:330px;width:700px;height:470px">
+    <div class="bar"><div class="logo" style="background:#7FA7DA"></div>Browser<div class="ctl">— ☐ ✕</div></div>
+    <div style="padding:24px 34px" class="bars">
+      <div style="width:50%;height:28px"></div><div></div><div style="width:92%"></div><div style="width:75%"></div><div></div><div style="width:60%"></div>
+    </div>
+  </div>
+  <div class="pet" id="pet2" style="left:600px;top:560px;width:360px;height:360px"></div>
+  <div id="s2text">
+    <div class="q" id="q1"><div class="zh">把任务交给 Claude，<br>你转身去忙别的……</div><div class="en">You hand a task to Claude and turn to something else…</div></div>
+    <div class="q" id="q2" style="margin-top:50px"><div class="zh" style="color:var(--orange-d);font-size:64px">可它什么时候需要你？</div><div class="en">But when does it need you?</div></div>
+    <div class="q" id="q3" style="margin-top:50px"><div class="zh">—— 交给她来提醒你。</div><div class="en">Let her tell you.</div></div>
+  </div>
+</div>
+
+<!-- ===== S3 桌面演示 ===== -->
+<div class="scene" id="s3">
+  <div class="win" id="claudeWin">
+    <div class="bar"><div class="logo"></div>Claude Code — my-app<div class="ctl">— ☐ ✕</div></div>
+    <div id="chatView"><div id="chatInner">
+      <div class="item umsg" id="m_u1"><div>给设置页加一个深色模式</div></div>
+      <div class="item tool" id="m_t1"><span class="d"></span><b>Read</b> src/SettingsPage.cpp</div>
+      <div class="item tool" id="m_t2"><span class="d"></span><b>Edit</b> src/SettingsPage.cpp</div>
+      <div class="item tool" id="m_t3"><span class="d"></span><b>Edit</b> src/Theme.h</div>
+      <div class="item perm" id="m_perm">
+        <div class="h">Claude 想要运行一条命令<span>Claude wants to run a command</span></div>
+        <div class="code">cmake --build build</div>
+        <div class="btns"><div class="btn pri" id="allowBtn">允许 Allow</div><div class="btn">拒绝 Deny</div></div>
+      </div>
+      <div class="item tool" id="m_t4"><span class="d"></span><b>Bash</b> cmake --build build <span class="ok">✓ 构建成功</span></div>
+      <div class="item atext" id="m_a1"></div>
+      <div id="mark2"></div>
+      <div class="item umsg" id="m_u2"><div>顺便补上单元测试</div></div>
+      <div class="item tool" id="m_t5"><span class="d"></span><b>Read</b> tests/test_settings.cpp</div>
+      <div class="item err" id="m_err">✗ API Error: 529 Overloaded</div>
+    </div></div>
+    <div id="inputBox"><span id="inputText"></span><div class="send"></div></div>
+  </div>
+  <div class="win" id="browserWin">
+    <div class="bar"><div class="logo" style="background:#7FA7DA"></div>文档 — Browser<div class="ctl">— ☐ ✕</div></div>
+    <div class="url"></div>
+    <div style="padding:6px 40px" class="bars">
+      <div style="width:45%;height:34px"></div><div></div><div style="width:93%"></div><div style="width:80%"></div>
+      <div style="width:88%"></div><div style="width:60%"></div><div></div><div style="width:72%"></div><div style="width:84%"></div>
+    </div>
+  </div>
+  <div class="pet" id="pet3" style="left:1450px;top:590px;width:440px;height:440px;z-index:30"></div>
+  <div class="chip" id="chip3" style="left:1670px;top:575px;z-index:31"></div>
+  <div id="taskbar">
+    <div class="ic"></div><div class="ic" style="background:var(--orange)"></div><div class="ic" style="background:#7FA7DA"></div><div class="ic"></div>
+    <div id="tray"><div class="tp"><img src="../assets/pet/idle.png"></div>14:32</div>
+  </div>
+</div>
+
+<!-- ===== S4 原理 ===== -->
+<div class="scene" id="s4">
+  <div class="h2"><div class="zh">工作原理</div><div class="en">How it works</div></div>
+  <div class="box" id="ccBox" style="left:150px;top:290px;width:600px;height:330px">
+    <div class="t">Claude Code</div><div class="s">HTTP hooks</div>
+    <div class="evs" id="evs"></div>
+    <div id="stillOk">✓ 照常工作 <span style="font-family:var(--en);font-weight:500;color:var(--muted)">works as usual</span></div>
+  </div>
+  <div id="arrowLbl">HTTP POST · JSON</div>
+  <div id="arrow"></div>
+  <div id="dot"></div><div id="fizz">✕</div>
+  <div class="box" id="cpBox" style="left:1170px;top:290px;width:600px;height:330px">
+    <div class="t">ClauPet</div><div class="s">127.0.0.1:52790</div>
+    <div class="pet" id="pet4" style="left:330px;top:40px;width:270px;height:270px"></div>
+    <div class="chip" id="chip4" style="left:150px;top:200px;font-size:22px"></div>
+    <div id="offline">离线 · offline</div>
+  </div>
+  <div id="json"></div>
+</div>
+
+<!-- ===== S5 多会话 ===== -->
+<div class="scene" id="s5">
+  <div class="h2"><div class="zh">多个会话，同时工作</div><div class="en">Multiple sessions at once</div></div>
+  <div class="sess" id="sA" style="top:250px"><div><div class="nm">会话 A<span>Session A</span></div><div class="task">重构网络模块</div></div><div class="st"></div></div>
+  <div class="sess" id="sB" style="top:400px"><div><div class="nm">会话 B<span>Session B</span></div><div class="task">写文档</div></div><div class="st"></div></div>
+  <div class="sess" id="sC" style="top:550px"><div><div class="nm">会话 C<span>Session C</span></div><div class="task">修复登录 bug</div></div><div class="st"></div></div>
+  <div class="pet" id="pet5" style="left:1150px;top:225px;width:480px;height:480px"></div>
+  <div class="chip" id="chip5" style="left:1390px;top:210px"></div>
+  <div id="prio"></div>
+</div>
+
+<!-- ===== S6 细节 ===== -->
+<div class="scene" id="s6">
+  <div class="h2"><div class="zh">贴心的小细节</div><div class="en">Little touches</div></div>
+  <div class="tile" id="f1" style="left:120px">
+    <div class="ill"><div class="pet" id="pf1" style="width:150px;height:150px;top:150px"></div>
+      <div class="abs" id="pin1" style="font-size:40px;opacity:0">📍</div>
+      <svg class="abs" id="cur1" width="26" height="36" viewBox="0 0 34 46"><path d="M2 2 L2 38 L11 29 L17 43 L23 40 L17 27 L30 27 Z" fill="#fff" stroke="#2b1e16" stroke-width="3" stroke-linejoin="round"/></svg></div>
+    <div class="tz">拖动摆放，记住位置</div><div class="te">Drag her anywhere — she's back in the same spot next launch</div>
+  </div>
+  <div class="tile" id="f2" style="left:555px">
+    <div class="ill"><div class="win abs" id="w2" style="left:24px;top:40px;width:210px;height:150px;border-radius:10px"><div class="bar" style="height:26px;font-size:12px;padding:0 10px"><div class="logo" style="width:12px;height:12px;border-radius:3px"></div>Claude Code</div></div>
+      <div class="win abs" id="w2b" style="left:60px;top:80px;width:200px;height:140px;border-radius:10px"><div class="bar" style="height:26px;font-size:12px;padding:0 10px"><div class="logo" style="width:12px;height:12px;border-radius:3px;background:#7FA7DA"></div>Browser</div></div>
+      <div class="pet" id="pf2" style="width:150px;height:150px;left:190px;top:180px"></div>
+      <svg class="abs" id="cur2" width="26" height="36" viewBox="0 0 34 46"><path d="M2 2 L2 38 L11 29 L17 43 L23 40 L17 27 L30 27 Z" fill="#fff" stroke="#2b1e16" stroke-width="3" stroke-linejoin="round"/></svg></div>
+    <div class="tz">单击切回 Claude</div><div class="te">Click her to bring the Claude window to the front</div>
+  </div>
+  <div class="tile" id="f3" style="left:990px">
+    <div class="ill"><div class="pet" id="pf3" style="width:170px;height:170px;left:20px;top:150px"></div>
+      <div class="menu" id="menu3" style="left:150px;top:70px"><div>隐藏<span>Hide</span></div><div>显示<span>Show</span></div><div style="border-top:1px solid #eee">退出<span>Quit</span></div></div></div>
+    <div class="tz">托盘与右键菜单</div><div class="te">Tray icon and right-click menu: hide, show, quit</div>
+  </div>
+  <div class="tile" id="f4" style="left:1425px">
+    <div class="ill"><div class="checker" id="chk4"></div><div class="pet" id="pf4" style="width:240px;height:240px;left:55px;top:60px"></div></div>
+    <div class="tz">透明 · 置顶 · 高清</div><div class="te">Transparent, frameless, always on top, crisp on high-DPI screens</div>
+  </div>
+</div>
+
+<!-- ===== S7 结尾 ===== -->
+<div class="scene" id="s7">
+  <div class="pet" id="pet7a" style="left:420px;top:150px;width:260px;height:260px"></div>
+  <div class="pet" id="pet7b" style="left:690px;top:120px;width:260px;height:260px"></div>
+  <div class="pet" id="pet7c" style="left:960px;top:120px;width:260px;height:260px"></div>
+  <div class="pet" id="pet7d" style="left:1230px;top:150px;width:260px;height:260px"></div>
+  <div id="outro">
+    <div class="big"><span style="color:var(--brown)">Clau</span><span style="color:var(--orange)">Pet</span></div>
+    <div class="tag">让等待 Claude 的时间，多一点陪伴</div>
+    <div class="tagen">A little company while Claude works</div>
+    <div class="spec">Windows 10 / 11 · C++ · Qt 6 · MIT</div>
+    <div class="url">github.com/whywhy1352/Claude-Pet</div>
+  </div>
+  <div id="disc">社区项目，与 Anthropic 无关。“Claude” 是 Anthropic, PBC 的商标。角色图片采用 CC BY-NC-SA 4.0 许可。<br>
+    <span style="font-family:var(--en)">Community project, not affiliated with Anthropic. "Claude" is a trademark of Anthropic, PBC. Character art licensed CC BY-NC-SA 4.0.</span></div>
+</div>
+
+<!-- 全局层 -->
+<div id="cap"><div class="zh"></div><div class="en"></div></div>
+<div id="ripple"></div>
+<svg id="cursor" viewBox="0 0 34 46"><path d="M2 2 L2 38 L11 29 L17 43 L23 40 L17 27 L30 27 Z" fill="#fff" stroke="#2b1e16" stroke-width="3" stroke-linejoin="round"/></svg>
+<div id="fadeAll"></div>
+</div>
+
+<script src="cuts.js"></script>
+<script>
+const SHORT = location.search.includes('short');   // ?short → 30 秒精简版
+const DURATION = SHORT ? SHORT_CUT.duration : 67;
+const $ = id => document.getElementById(id);
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const p = (t, a, b) => clamp((t - a) / (b - a));
+const lerp = (a, b, x) => a + (b - a) * x;
+const eio = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const eo = x => 1 - Math.pow(1 - x, 3);
+const back = x => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const win = (t, a, b, d = .4) => Math.min(p(t, a, a + d), 1 - p(t, b - d, b));   // a~b 之间可见，两端淡入淡出
+const show = (el, o, dy = 0, s = 1) => { el.style.opacity = o; el.style.transform = `translateY(${dy}px) scale(${s})`; };
+
+const STATES = ['idle', 'working', 'waiting', 'error'];
+const LABEL = {
+  idle: ['空闲', 'Idle'], working: ['工作中', 'Working'],
+  waiting: ['需要你介入', 'Needs you'], error: ['出错', 'Error']
+};
+
+/* ---------- 宠物 ---------- */
+function makePet(id) {
+  const el = $(id), inner = document.createElement('div');
+  inner.className = 'inner';
+  el.appendChild(inner);
+  const imgs = {};
+  for (const s of STATES) {
+    const img = document.createElement('img');
+    img.src = `../assets/pet/${s}.png`;
+    inner.appendChild(img);
+    imgs[s] = img;
+  }
+  return { el, inner, imgs };
+}
+// tl: [[时间, 状态], ...]，按时间排序
+function stateInfo(tl, t) {
+  let i = 0;
+  for (let k = 0; k < tl.length; k++) if (tl[k][0] <= t) i = k;
+  return { cur: tl[i][1], prev: i > 0 ? tl[i - 1][1] : null, since: tl[i][0] };
+}
+function drawPet(pet, tl, t, extra = {}) {
+  const { cur, prev, since } = stateInfo(tl, t);
+  const dt = t - since;
+  const k = prev ? eo(p(dt, 0, .22)) : 1;
+  for (const s of STATES) pet.imgs[s].style.opacity = s === cur ? k : (s === prev ? 1 - k : 0);
+  // 切换时轻轻一弹
+  const pop = prev ? Math.sin(clamp(dt / .45) * Math.PI) * Math.exp(-dt * 3) * .09 : 0;
+  let x = 0, y = 0, sx = 1 + pop * .6, sy = 1 - pop * .4 + (prev && dt < .45 ? pop : 0), rot = 0;
+  if (cur === 'idle') sy *= 1 + .012 * Math.sin(t * 2.1);
+  if (cur === 'working') y = -4 * Math.sin(t * 3.4);
+  if (cur === 'waiting') { y = -16 * Math.abs(Math.sin(t * 6)); rot = 2.5 * Math.sin(t * 6); }
+  if (cur === 'error') x = 7 * Math.sin(dt * 45) * Math.exp(-dt * 2.5) + 1.5 * Math.sin(t * 20);
+  x += extra.x || 0; y += extra.y || 0; sx *= extra.s || 1; sy *= extra.s || 1;
+  pet.inner.style.transform = `translate(${x}px,${y}px) rotate(${rot}deg) scale(${sx},${sy})`;
+  return cur;
+}
+function drawChip(el, state) {
+  const [zh, en] = LABEL[state];
+  const key = state;
+  if (el.dataset.k !== key) {
+    el.dataset.k = key;
+    el.innerHTML = `<span class="dot" style="background:var(--${state})"></span>${zh}<span class="en">${en}</span>`;
+    el.style.color = `var(--${state})`;
+  }
+}
+
+const pet1 = makePet('pet1'), pet2 = makePet('pet2'), pet3 = makePet('pet3'), pet4 = makePet('pet4'),
+      pet5 = makePet('pet5'), pf1 = makePet('pf1'), pf2 = makePet('pf2'), pf3 = makePet('pf3'), pf4 = makePet('pf4');
+const pet7 = ['pet7a', 'pet7b', 'pet7c', 'pet7d'].map(makePet);
+
+/* ---------- 字幕 ---------- */
+const CAPS = [
+  [10.4, 13.6, '她待在桌面一角，随时感知 Claude 的状态', 'She lives in a corner of your desktop, sensing what Claude is up to'],
+  [13.9, 17.9, '你发出消息，Claude 开始工作 —— 她也捧起书认真阅读', 'You send a message, Claude gets to work — and so does she'],
+  [18.0, 19.9, '你切去忙别的事……', 'Meanwhile, you switch to something else…'],
+  [20.0, 22.7, 'Claude 需要你批准或向你提问时，她举手提醒你', 'When Claude needs your approval or has a question, she raises her hand'],
+  [22.8, 25.2, '单击她，立刻切回 Claude 窗口', 'Click her to jump straight back to Claude'],
+  [25.3, 27.9, '批准之后，Claude 继续干活', 'Approve, and Claude carries on'],
+  [28.0, 30.1, '回复完毕，她安静地微笑', "Claude's done — she smiles quietly"],
+  [32.1, 34.7, '遇到 API 错误中断时，她会难过得掉眼泪', 'If an API error cuts Claude off, she bursts into tears'],
+  [35.6, 38.6, 'Claude Code 的 HTTP hooks 把每个事件以 JSON 发到本机端口', "Claude Code's HTTP hooks POST every event as JSON to a local port"],
+  [38.7, 41.6, 'ClauPet 读出事件名，切换成对应的状态', 'ClauPet reads the event name and switches to the matching state'],
+  [41.7, 44.7, 'ClauPet 没在运行？请求只是静默失败，不影响 Claude 工作', "Not running? The request just fails quietly — Claude isn't affected"],
+  [45.6, 47.6, '同时开着好几个会话？', 'Running several sessions at once?'],
+  [47.7, 50.5, '她总是显示最需要你关注的那一个', 'She always shows the one that needs you most'],
+  [50.6, 52.9, '一个会话结束了、另一个还在工作，她不会错误地变回空闲', "One session finishing won't make her go idle while another is still working"],
+];
+function drawCap(t, caps = CAPS) {
+  const cap = $('cap');
+  let o = 0;
+  for (const [a, b, zh, en] of caps) {
+    if (t >= a && t < b) {
+      o = win(t, a, b, .25);
+      if (cap.dataset.a != a) { cap.dataset.a = a; cap.children[0].textContent = zh; cap.children[1].textContent = en; }
+    }
+  }
+  cap.style.opacity = o;
+  cap.style.transform = `translateX(-50%) translateY(${(1 - o) * 12}px)`;
+}
+
+/* ---------- S1 标题 ---------- */
+const tBig = $('tBig');
+'ClauPet'.split('').forEach((c, i) => {
+  const s = document.createElement('span');
+  s.textContent = c;
+  s.style.color = i >= 4 ? 'var(--orange)' : 'var(--brown)';
+  tBig.appendChild(s);
+});
+const S1_TL = [[0, 'idle'], [2.0, 'working'], [2.6, 'waiting'], [3.2, 'error'], [3.8, 'idle']];
+function drawS1(t) {
+  $('s1').style.opacity = 1 - p(t, 4.4, 5.0);
+  const k = back(p(t, .15, .85));
+  drawPet(pet1, S1_TL, t, { s: Math.max(0, k), y: (1 - p(t, .15, .85)) * 60 });
+  pet1.el.style.opacity = p(t, .15, .35);
+  [...tBig.children].forEach((s, i) => {
+    const q = eo(p(t, .6 + i * .07, 1.1 + i * .07));
+    s.style.opacity = q;
+    s.style.transform = `translateY(${(1 - q) * 50}px)`;
+  });
+  const a = eo(p(t, 1.3, 1.8)), b = eo(p(t, 1.5, 2.0));
+  show($('tSub'), a, (1 - a) * 20);
+  show($('tSubEn'), b, (1 - b) * 20);
+  $('b1').style.transform = `translate(${20 * Math.sin(t * .8)}px,${15 * Math.cos(t * .6)}px)`;
+  $('b2').style.transform = `translate(${-25 * Math.sin(t * .7)}px,${12 * Math.cos(t * .9)}px)`;
+  $('b3').style.transform = `translate(${15 * Math.cos(t * .9)}px,${-18 * Math.sin(t * .5)}px)`;
+}
+
+/* ---------- S2 痛点 ---------- */
+function drawS2(t) {
+  $('s2').style.opacity = win(t, 4.9, 10.2, .5);
+  const a = eo(p(t, 5.2, 5.8));
+  show($('s2claude'), a, (1 - a) * 30);
+  const b = eio(p(t, 6.2, 6.9));
+  $('s2browser').style.transform = `translateX(${(1 - b) * -1100}px)`;
+  $('s2badge').style.opacity = .55 + .45 * Math.sin(t * 6);
+  [['q1', 5.5], ['q2', 7.2], ['q3', 8.6]].forEach(([id, s]) => { const q = eo(p(t, s, s + .5)); show($(id), q, (1 - q) * 24); });
+  const c = back(p(t, 8.7, 9.3));
+  pet2.el.style.transform = `translateY(${(1 - clamp(c, 0, 1.2)) * 380}px)`;
+  drawPet(pet2, [[0, 'waiting']], t);
+}
+
+/* ---------- S3 桌面演示 ---------- */
+const PACKETS = [
+  [13.8, 'UserPromptSubmit', 'working'], [14.7, 'PreToolUse', 'working'], [15.9, 'PreToolUse', 'working'],
+  [17.1, 'PreToolUse', 'working'], [19.5, 'PermissionRequest', 'waiting'], [25.3, 'PostToolUse', 'working'],
+  [27.4, 'Stop', 'idle'], [30.4, 'UserPromptSubmit', 'working'], [31.6, 'StopFailure', 'error'],
+];
+const FLY = .6;
+const S3_TL = [[0, 'idle'], ...PACKETS.map(([t0, , s]) => [t0 + FLY, s])];
+const packetEls = PACKETS.map(([, name]) => {
+  const d = document.createElement('div');
+  d.className = 'packet';
+  d.innerHTML = `<i>POST</i>${name}`;
+  $('s3').appendChild(d);
+  return d;
+});
+const ITEMS = [
+  ['m_u1', 13.8], ['m_t1', 14.7], ['m_t2', 15.9], ['m_t3', 17.1], ['m_perm', 19.5, 25.25],
+  ['m_t4', 25.3], ['m_a1', 26.4], ['m_u2', 30.4], ['m_t5', 31.0], ['m_err', 31.6],
+];
+const REPLY = '完成！设置页现在有一个「深色模式」开关，默认跟随系统主题。';
+function typed(t, a, b, text) { return text.slice(0, Math.round(text.length * p(t, a, b))); }
+// 光标关键帧：[时间, x, y]，x/y 可以是函数（按钮位置要实时量）
+function rel(el) {
+  const s = $('stage').getBoundingClientRect(), r = el.getBoundingClientRect(), k = s.width / 1920;
+  return { x: (r.left - s.left) / k, y: (r.top - s.top) / k, w: r.width / k, h: r.height / k };
+}
+function allowXY() { const r = rel($('allowBtn')); return [r.x + r.w * .45, r.y + r.h * .55]; }
+const CURSOR = [
+  [20.6, 1180, 980], [22.7, 1660, 800], [23.4, 1660, 800], [24.9, allowXY], [26.0, allowXY], [26.8, 1300, 1000],
+];
+const CLICKS = [[23.0, () => [1660, 800]], [25.2, allowXY]];
+function cursorAt(t) {
+  const pt = k => typeof CURSOR[k][1] === 'function' ? CURSOR[k][1]() : [CURSOR[k][1], CURSOR[k][2]];
+  if (t <= CURSOR[0][0]) return pt(0);
+  for (let k = 0; k < CURSOR.length - 1; k++) {
+    if (t <= CURSOR[k + 1][0]) {
+      const q = eio(p(t, CURSOR[k][0], CURSOR[k + 1][0])), a = pt(k), b = pt(k + 1);
+      return [lerp(a[0], b[0], q), lerp(a[1], b[1], q)];
+    }
+  }
+  return pt(CURSOR.length - 1);
+}
+function drawS3(t) {
+  $('s3').style.opacity = win(t, 10.0, 35.2, .5);
+  if (t < 9.8 || t > 35.4) return;
+
+  // 聊天内容
+  for (const [id, a, b] of ITEMS) {
+    const el = $(id), on = t >= a && (!b || t < b);
+    el.style.display = on ? (el.classList.contains('tool') || el.classList.contains('umsg') ? 'flex' : 'block') : 'none';
+    let q = eo(p(t, a, a + .3));
+    if (b) q = Math.min(q, 1 - p(t, b - .2, b));
+    show(el, q, (1 - q) * 14);
+  }
+  $('m_a1').textContent = typed(t, 26.4, 27.3, REPLY);
+  const scroll = eio(p(t, 29.4, 30.0)) * ($('mark2').offsetTop - 10);
+  $('chatInner').style.transform = `translateY(${-scroll}px)`;
+
+  // 输入框
+  let txt = '';
+  if (t >= 11.6 && t < 13.8) txt = typed(t, 11.6, 13.3, '给设置页加一个深色模式');
+  if (t >= 29.0 && t < 30.4) txt = typed(t, 29.0, 30.0, '顺便补上单元测试');
+  const caret = Math.floor(t * 2.2) % 2 === 0 ? '<span class="caret"></span>' : '<span class="caret" style="opacity:0"></span>';
+  $('inputText').innerHTML = txt ? txt + caret : '<span class="ph">给 Claude 发消息…  Message Claude…</span>';
+
+  // 浏览器窗口：滑入遮住 Claude 窗口，单击宠物后最小化
+  const bin = eio(p(t, 18.0, 18.8)), bmin = eio(p(t, 23.15, 23.6));
+  const bw = $('browserWin');
+  bw.style.transform = `translate(${(1 - bin) * -1500 + bmin * 500}px,${bmin * 520}px) scale(${1 - bmin * .85})`;
+  bw.style.opacity = 1 - bmin;
+  const glow = Math.sin(clamp(p(t, 23.35, 24.4)) * Math.PI);
+  $('claudeWin').style.boxShadow = `0 24px 70px rgba(59,42,32,.22), 0 0 0 ${glow * 6}px rgba(232,116,59,${glow * .8})`;
+
+  // 宠物（被单击时压扁一下）
+  const press = Math.sin(clamp(p(t, 22.95, 23.3)) * Math.PI);
+  const st = drawPet(pet3, S3_TL, t, { s: 1 - press * .06 });
+  drawChip($('chip3'), st);
+  const chipK = eo(p(t, 10.4, 10.8));
+  $('chip3').style.opacity = chipK;
+
+  // 托盘图标跟着变
+  const trayImg = document.querySelector('#tray img');
+  if (trayImg.dataset.s !== st) { trayImg.dataset.s = st; trayImg.src = `../assets/pet/${st}.png`; }
+
+  // hook 事件小包：从 Claude 窗口飞向宠物
+  PACKETS.forEach(([t0], i) => {
+    const el = packetEls[i], q = p(t, t0, t0 + FLY);
+    if (t < t0 || t > t0 + FLY + .05) { el.style.opacity = 0; return; }
+    const e = eio(q), x0 = 1150, y0 = 380, x1 = 1670, y1 = 700, cx = 1450, cy = 250;
+    const x = (1 - e) * (1 - e) * x0 + 2 * (1 - e) * e * cx + e * e * x1;
+    const y = (1 - e) * (1 - e) * y0 + 2 * (1 - e) * e * cy + e * e * y1;
+    el.style.left = x + 'px'; el.style.top = y + 'px';
+    el.style.opacity = Math.min(p(q, 0, .15), 1 - p(q, .8, 1));
+    el.style.transform = `translate(-50%,-50%) scale(${1 - .35 * p(q, .6, 1)})`;
+  });
+
+  // 鼠标与点击
+  const cur = $('cursor'), [cx, cy] = cursorAt(t);
+  cur.style.opacity = win(t, 20.6, 27.0, .3);
+  cur.style.left = cx + 'px'; cur.style.top = cy + 'px';
+  const rp = $('ripple');
+  rp.style.opacity = 0;
+  for (const [tc, f] of CLICKS) {
+    if (t >= tc && t < tc + .5) {
+      const [x, y] = f(), q = p(t, tc, tc + .5), r = 20 + q * 70;
+      Object.assign(rp.style, { left: x + 'px', top: y + 'px', width: r + 'px', height: r + 'px', opacity: 1 - q });
+    }
+  }
+}
+
+/* ---------- S4 原理 ---------- */
+const EVS = ['UserPromptSubmit', 'PreToolUse', 'PostToolUse', 'PermissionRequest', 'Stop', 'StopFailure', 'SessionEnd'];
+EVS.forEach(n => { const d = document.createElement('div'); d.className = 'ev'; d.textContent = n; d.id = 'ev_' + n; $('evs').appendChild(d); });
+const S4_SEND = [[36.6, 'UserPromptSubmit', null], [38.2, 'PermissionRequest', 'Bash'], [39.8, 'Stop', null], [41.0, 'StopFailure', null]];
+const S4_FLY = .7;
+const S4_TL = [[0, 'idle'], [36.6 + S4_FLY, 'working'], [38.2 + S4_FLY, 'waiting'], [39.8 + S4_FLY, 'idle'], [41.0 + S4_FLY, 'error']];
+function jsonHTML(ev, tool) {
+  const k = s => `<span class="k">"${s}"</span>`, v = s => `<span class="v">"${s}"</span>`;
+  return `{\n  ${k('hook_event_name')}: <span class="hl">${v(ev)}</span>,\n  ${k('session_id')}: ${v('3f2a…c9e1')}` +
+         (tool ? `,\n  ${k('tool_name')}: ${v(tool)}` : '') + `\n}`;
+}
+function drawS4(t) {
+  $('s4').style.opacity = win(t, 34.9, 45.2, .5);
+  if (t < 34.7 || t > 45.4) return;
+  const a = eo(p(t, 35.2, 35.7)), b = eo(p(t, 35.4, 35.9));
+  show($('ccBox'), a, (1 - a) * 30); show($('cpBox'), b, (1 - b) * 30);
+  const ar = eo(p(t, 35.8, 36.3));
+  $('arrow').style.transform = `scaleX(${ar})`; $('arrow').style.transformOrigin = '0 50%';
+  $('arrowLbl').style.opacity = ar;
+
+  // 当前发送的事件
+  let cur = null;
+  for (const s of S4_SEND) if (t >= s[0]) cur = s;
+  EVS.forEach(n => {
+    const el = $('ev_' + n), on = cur && cur[1] === n && t < 43.5;
+    el.style.background = on ? 'var(--orange)' : '#F5ECE2';
+    el.style.color = on ? '#fff' : '#6b5546';
+  });
+  const js = $('json');
+  const jo = cur && t < 41.6 ? eo(p(t, 36.6 + S4_FLY, 36.6 + S4_FLY + .3)) : 0;
+  js.style.opacity = jo * (1 - p(t, 41.3, 41.6));
+  if (cur && js.dataset.e !== cur[1]) { js.dataset.e = cur[1]; js.innerHTML = jsonHTML(cur[1], cur[2]); }
+
+  // 离线演示：最后一个包在半路失败
+  const offline = p(t, 41.7, 42.1);
+  $('offline').style.opacity = offline;
+  const dot = $('dot');
+  dot.style.opacity = 0;
+  const sends = [...S4_SEND, [42.4, 'Stop', null, true]];
+  for (const [t0, , , dies] of sends) {
+    const q = p(t, t0, t0 + S4_FLY);
+    if (t >= t0 && t < t0 + S4_FLY) {
+      const e = eio(q) * (dies ? .5 : 1);
+      dot.style.left = lerp(770, 1170, e) + 'px'; dot.style.top = '458px';
+      dot.style.opacity = dies ? 1 - p(q, .7, 1) : 1;
+    }
+  }
+  const fz = win(t, 42.75, 44.5, .2);
+  $('fizz').style.opacity = fz;
+  $('fizz').style.transform = `translate(-50%,-50%) scale(${.6 + .4 * back(p(t, 42.75, 43.1))})`;
+  $('stillOk').style.opacity = eo(p(t, 43.2, 43.6));
+  const st = t < 41.7 ? drawPet(pet4, S4_TL, t) : drawPet(pet4, S4_TL, 41.69);
+  pet4.el.style.filter = `grayscale(${offline})`;
+  drawChip($('chip4'), st);
+}
+
+/* ---------- S5 多会话 ---------- */
+const RANK = { error: 3, waiting: 2, working: 1, idle: 0 };
+const SESS = {
+  sA: [[0, 'working'], [50.6, 'idle']],
+  sB: [[0, 'idle']],
+  sC: [[0, 'working'], [47.7, 'waiting'], [49.4, 'working'], [52.0, 'idle']],
+};
+['error', 'waiting', 'working', 'idle'].forEach((s, i) => {
+  if (i) { const g = document.createElement('div'); g.className = 'gt'; g.textContent = '>'; $('prio').appendChild(g); }
+  const d = document.createElement('div');
+  d.className = 'p'; d.id = 'pr_' + s; d.style.background = `var(--${s})`;
+  d.innerHTML = `${LABEL[s][0]}<span>${LABEL[s][1]}</span>`;
+  $('prio').appendChild(d);
+});
+function drawS5(t) {
+  $('s5').style.opacity = win(t, 45.0, 53.3, .5);
+  if (t < 44.8 || t > 53.5) return;
+  let best = 'idle', bestId = null;
+  Object.entries(SESS).forEach(([id, tl], i) => {
+    const el = $(id), s = stateInfo(tl, t).cur, q = eo(p(t, 45.5 + i * .2, 45.9 + i * .2));
+    show(el, q, (1 - q) * 24);
+    const stEl = el.querySelector('.st');
+    stEl.style.background = `var(--${s})`;
+    stEl.textContent = LABEL[s][0];
+    if (RANK[s] > RANK[best] || (!bestId && s === best)) { best = s; bestId = id; }
+    el.style.borderColor = 'transparent';
+  });
+  if (best !== 'idle') $(bestId).style.borderColor = `var(--${best})`;
+  // 宠物的时间线由会话状态推出来
+  const tl = [[0, 'idle']];
+  [45.5, 47.7, 49.4, 50.6, 52.0].forEach(tt => {
+    const s = Object.values(SESS).map(x => stateInfo(x, tt).cur).sort((a, b) => RANK[b] - RANK[a])[0];
+    if (tl[tl.length - 1][1] !== s) tl.push([tt, s]);
+  });
+  const pq = eo(p(t, 45.6, 46.1));
+  pet5.el.style.opacity = pq; $('chip5').style.opacity = pq;
+  drawChip($('chip5'), drawPet(pet5, tl, t));
+  const prq = eo(p(t, 46.0, 46.5));
+  show($('prio'), prq, (1 - prq) * 20);
+  ['error', 'waiting', 'working', 'idle'].forEach(s => {
+    const on = s === best;
+    $('pr_' + s).style.transform = `scale(${on ? 1.12 : 1})`;
+    $('pr_' + s).style.opacity = on ? 1 : .45;
+  });
+}
+
+/* ---------- S6 细节 ---------- */
+function drawS6(t) {
+  $('s6').style.opacity = win(t, 53.2, 60.2, .5);
+  if (t < 53.0 || t > 60.4) return;
+  ['f1', 'f2', 'f3', 'f4'].forEach((id, i) => { const q = eo(p(t, 53.6 + i * .25, 54.1 + i * .25)); show($(id), q, (1 - q) * 40); });
+  const L = t - 54;
+  // 1. 拖动
+  const d = eio(p(L, .8, 2.2)), px = lerp(20, 180, d), py = lerp(160, 40, d);
+  pf1.el.style.left = px + 'px'; pf1.el.style.top = py + 'px';
+  drawPet(pf1, [[0, 'idle']], t);
+  $('cur1').style.left = (px + 80) + 'px'; $('cur1').style.top = (py + 70) + 'px';
+  $('cur1').style.opacity = 1 - p(L, 2.4, 2.7);
+  const pin = back(p(L, 2.5, 2.9));
+  $('pin1').style.left = (px + 55) + 'px'; $('pin1').style.top = (py + 150) + 'px';
+  $('pin1').style.opacity = p(L, 2.5, 2.6); $('pin1').style.transform = `scale(${Math.max(0, pin)})`;
+  // 2. 单击切回
+  const c2 = [lerp(120, 262, eio(p(L, .9, 1.8))), lerp(300, 250, eio(p(L, .9, 1.8)))];
+  $('cur2').style.left = c2[0] + 'px'; $('cur2').style.top = c2[1] + 'px';
+  const front = L > 2.1;
+  $('w2').style.zIndex = front ? 3 : 1; $('w2b').style.zIndex = 2;
+  $('w2').style.boxShadow = front ? `0 0 0 ${4 * Math.sin(clamp(p(L, 2.1, 2.8)) * Math.PI)}px var(--orange), 0 10px 30px rgba(0,0,0,.2)` : '';
+  $('cur2').style.zIndex = 5; pf2.el.style.zIndex = 4;
+  drawPet(pf2, [[0, 'waiting'], [2.1 + 54, 'working']], t, { s: 1 - .06 * Math.sin(clamp(p(L, 1.9, 2.2)) * Math.PI) });
+  // 3. 托盘菜单
+  drawPet(pf3, [[0, 'idle']], t);
+  const m = back(p(L, 1.4, 1.8));
+  $('menu3').style.opacity = p(L, 1.4, 1.5); $('menu3').style.transform = `scale(${Math.max(0, m)})`; $('menu3').style.transformOrigin = '0 0';
+  // 4. 透明
+  drawPet(pf4, [[0, 'idle'], [55.6, 'working'], [56.6, 'waiting'], [57.6, 'idle']], t);
+  $('chk4').style.opacity = .4 + .6 * eo(p(L, 1.0, 1.6));
+}
+
+/* ---------- S7 结尾 ---------- */
+function drawS7(t) {
+  $('s7').style.opacity = p(t, 60.0, 60.6);
+  if (t < 59.8) return;
+  pet7.forEach((pt, i) => {
+    const q = back(p(t, 60.3 + i * .15, 60.9 + i * .15));
+    pt.el.style.opacity = p(t, 60.3 + i * .15, 60.45 + i * .15);
+    drawPet(pt, [[0, STATES[i]]], t, { s: Math.max(0, q) });
+  });
+  const o = $('outro');
+  [...o.children].forEach((c, i) => { const q = eo(p(t, 61.0 + i * .25, 61.5 + i * .25)); show(c, q, (1 - q) * 24); });
+  $('disc').style.opacity = eo(p(t, 62.6, 63.2));
+  $('fadeAll').style.opacity = p(t, 66.2, 67.0);
+}
+
+/* ---------- 总入口 ---------- */
+function renderFull(t) {
+  $('fadeAll').style.opacity = 0;
+  drawS1(t); drawS2(t); drawS3(t); drawS4(t); drawS5(t); drawS6(t); drawS7(t); drawCap(t);
+  if (!(t > 20 && t < 27.2)) { $('cursor').style.opacity = 0; $('ripple').style.opacity = 0; }
+}
+// 精简版：按 cuts.js 的剪辑表，把新时间换算成原时间，只画选中的场景
+const DRAW = { s1: drawS1, s2: drawS2, s3: drawS3, s4: drawS4, s5: drawS5, s6: drawS6, s7: drawS7 };
+function renderShort(t) {
+  $('fadeAll').style.opacity = 0;
+  $('cursor').style.opacity = 0; $('ripple').style.opacity = 0;
+  for (const id in DRAW) $(id).style.opacity = 0;
+  for (const seg of SHORT_CUT.segments) {
+    if (t < seg.from || t > seg.to) continue;
+    DRAW[seg.scene](interpKnots(seg.map, t));
+    // 场景自己算的透明度不算数，改用剪辑表里的淡入淡出（第一段开头和最后一段结尾除外）
+    const fin = seg.from === 0 ? 1 : p(t, seg.from, seg.from + .3);
+    $(seg.scene).style.opacity = Math.min(fin, 1 - p(t, seg.to - .3, seg.to));
+  }
+  drawCap(t, SHORT_CUT.captions);
+}
+const render = SHORT ? renderShort : renderFull;
+window.render = render;
+window.DURATION = DURATION;
+
+const RENDER_MODE = location.search.includes('render');
+Promise.all([...document.images].map(i => i.decode().catch(() => {}))).then(() => document.fonts.ready).then(() => {
+  render(0);
+  window.__ready = true;
+  if (RENDER_MODE) return;
+  // 预览模式：缩放到窗口大小、实时播放；空格暂停，←/→ 快退快进，数字键跳到第 N 个十秒
+  const fit = () => { const k = Math.min(innerWidth / 1920, innerHeight / 1080); $('stage').style.transform = `scale(${k})`;
+    $('stage').style.left = (innerWidth - 1920 * k) / 2 + 'px'; $('stage').style.top = (innerHeight - 1080 * k) / 2 + 'px'; };
+  fit(); addEventListener('resize', fit);
+  let t = 0, last = performance.now(), paused = false;
+  addEventListener('keydown', e => {
+    if (e.code === 'Space') paused = !paused;
+    if (e.key === 'ArrowRight') t += 2;
+    if (e.key === 'ArrowLeft') t = Math.max(0, t - 2);
+    if (/^[0-6]$/.test(e.key)) t = +e.key * 10;
+  });
+  const loop = now => {
+    if (!paused) t += (now - last) / 1000;
+    last = now;
+    if (t > DURATION) t = 0;
+    render(t);
+    requestAnimationFrame(loop);
+  };
+  requestAnimationFrame(loop);
+});
+</script>
+</body>
+</html>
