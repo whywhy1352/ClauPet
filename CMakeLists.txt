@@ -9,12 +9,13 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Network)	# 找到 Qt6 的两个模�
 
 add_executable(ClauPet main.cpp "Petwindow.h" "Petwindow.cpp" "Petstate.h")	# 生成程序 ClauPet.exe，由这些源文件组成
 set_target_properties(ClauPet PROPERTIES WIN32_EXECUTABLE ON)	# 做成窗口程序：启动时不再弹出黑色控制台
-# 把 4 张宠物图片编译进 .exe，程序里用 ":/assets/pet/xxx.png" 读取（注意：必须写在 add_executable 之后）
+# 把 5 张宠物图片（4 种状态 + 被拖动）编译进 .exe，程序里用 ":/assets/pet/xxx.png" 读取（注意：必须写在 add_executable 之后）
 qt_add_resources(ClauPet "pet_image" PREFIX "/" FILES
 assets/pet/idle.png
 assets/pet/working.png
 assets/pet/waiting.png
 assets/pet/error.png
+assets/pet/dragging.png
 )
 target_link_libraries(ClauPet PRIVATE Qt6::Widgets Qt6::Network)	# 链接 Qt 的这两个模块
 

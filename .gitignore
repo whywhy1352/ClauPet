@@ -8,3 +8,4 @@ promo/*.mp4
 promo/*.wav
 promo/*.log
 promo/stills*/
+enc_temp_folder/

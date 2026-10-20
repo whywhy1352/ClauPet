@@ -28,7 +28,7 @@ ClauPet 是一个给 **Claude Code** 用的 Windows 桌面宠物。它浮在桌�
 - **实时反映 Claude Code 的状态**：空闲、工作中、需要你介入、出错，共 4 种状态
 - **支持多个会话同时工作**：一个会话结束了、另一个还在工作时，宠物不会错误地变回空闲
 - **单击宠物**：切换到 Claude 桌面应用的窗口
-- **拖动宠物**：随意摆放，下次启动时会出现在上次的位置
+- **拖动宠物**：随意摆放，拖动时她会像被拎起后领一样悬在空中；下次启动时会出现在上次的位置
 - **右键菜单 / 托盘图标**：隐藏、显示、退出
 - 透明背景、无边框、始终置顶；在高分辨率屏幕上也能清晰显示
 
@@ -116,7 +116,7 @@ ClauPet 没有运行时，hook 的请求会连接失败。Claude Code 把这种�
 | 操作 | 效果 |
 |---|---|
 | 左键单击宠物 | 切换到 Claude 桌面应用的窗口（如果最小化了会先还原） |
-| 左键拖动宠物 | 移动位置，松开时自动保存 |
+| 左键拖动宠物 | 移动位置（拖动时会显示被拎起来的样子），松开时自动保存 |
 | 右键宠物 / 右键托盘图标 | 菜单：隐藏或显示宠物、退出 |
 | 先单击宠物，再按数字键 1–4 | 手动切换 4 种状态，用于测试 |
 
@@ -200,7 +200,7 @@ ClauPet is a Windows desktop pet for **Claude Code**. It floats on your desktop 
 - **Reflects Claude Code's state in real time**: idle, working, needs your input, and error
 - **Works with multiple sessions**: if one session finishes while another is still working, the pet keeps showing "working"
 - **Click the pet** to bring the Claude desktop app's window to the front
-- **Drag the pet** anywhere; it remembers its position across restarts
+- **Drag the pet** anywhere; she dangles as if lifted by her collar while you drag, and remembers her position across restarts
 - **Right-click menu / tray icon**: hide, show, or quit
 - Transparent, frameless, always on top, and crisp on high-DPI displays
 
@@ -288,7 +288,7 @@ Press `Win + R`, type `shell:startup`, press Enter, and put a shortcut to `ClauP
 | Action | Result |
 |---|---|
 | Left-click the pet | Bring the Claude desktop app's window to the front (restoring it if minimized) |
-| Left-drag the pet | Move it; the position is saved when you release the mouse |
+| Left-drag the pet | Move it (she dangles as if lifted while dragged); the position is saved when you release the mouse |
 | Right-click the pet or the tray icon | Menu: hide/show the pet, or quit |
 | Click the pet, then press 1–4 | Switch between the four states manually, for testing |
 

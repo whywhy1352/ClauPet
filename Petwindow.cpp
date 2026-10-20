@@ -40,7 +40,7 @@ static QPixmap loadPetImage(const char* path,qreal dpr)
 // 判断一个 HTTP 请求是否已经完整收到
 // 收齐了：取走数据，把请求体存进 body（输出参数），返回 true
 // 没收齐：什么都不取走，返回 false，等下一次 readyRead 再来判断
-static bool tryReadyBody(QTcpSocket* socket, QByteArray& body)
+static bool tryReadBody(QTcpSocket* socket, QByteArray& body)
 {
 	const QByteArray data{ socket->peek(socket->bytesAvailable()) };	// "偷看"目前收到的全部数据，数据仍留在 socket 里
 	const qsizetype headerEnd{ data.indexOf("\r\n\r\n") };	// 请求头结束的位置（空行）；-1 表示请求头还没收完
@@ -150,6 +150,7 @@ Petwindow::Petwindow()
 	m_working = loadPetImage(":/assets/pet/working.png", dpr);
 	m_waiting = loadPetImage(":/assets/pet/waiting.png", dpr);
 	m_error = loadPetImage(":/assets/pet/error.png", dpr);
+	m_dragged = loadPetImage(":/assets/pet/dragging.png", dpr);	// 被拖动时"被拎起来"的图片（不属于任何 Claude 状态）
 	// 无边框 + 始终置顶 + 工具窗口（不在任务栏显示按钮，改用托盘图标）；用 | 组合三个标志位
 	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
 	setAttribute(Qt::WA_TranslucentBackground);	// 背景透明：没画东西的地方完全透明，点击会穿透到后面的窗口
@@ -165,8 +166,8 @@ Petwindow::Petwindow()
 			// [socket]：复制的是指针，指向同一个 socket；[this]：捕获当前窗口，才能调用成员函数 handleHookEvent
 			connect(socket, &QTcpSocket::readyRead, this, [socket,this]()
 				{
-					QByteArray body;	// 用来接收请求体（由 tryReadyBody 填进去）
-					if (!tryReadyBody(socket, body))
+					QByteArray body;	// 用来接收请求体（由 tryReadBody 填进去）
+					if (!tryReadBody(socket, body))
 					{
 						return;	// 还没收齐：结束这一次执行，等下一次 readyRead
 					}
@@ -213,20 +214,30 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 	QPainter painter(this);	// 创建画笔，画在"我自己"这个窗口上；函数结束时析构，自动结束绘制
 	painter.setRenderHint(QPainter::Antialiasing);	// 抗锯齿（以前画圆时用的，画图片用不到）
 	const QPixmap* pixmap{ &m_idle };	// 指向这次要画的图片；常量指针：可以改指向，不能通过它改图片
-	switch (m_state)	// 根据当前状态选择图片
+	// 先判断是否正在被拖动：拖动是你和宠物之间的互动，优先于 Claude 的状态显示
+	// （必须写在 switch 之前，和 stateHookEvent 里"越特殊的规则越靠前"是一个道理）
+	// 拖动期间 Claude 的状态照常更新，只是暂时看不到，松开后就会显示出来
+	if (m_dragging)
 	{
-	case PetState::Idle:
-		pixmap = &m_idle;
-		break;
-	case PetState::Working:
-		pixmap = &m_working;
-		break;
-	case PetState::NeedsInput:
-		pixmap = &m_waiting;
-		break;
-	case PetState::Error:
-		pixmap = &m_error;
-		break;
+		pixmap = &m_dragged;
+	}
+	else
+	{
+		switch (m_state)	// 没在拖动：根据 Claude 的状态选择图片
+		{
+		case PetState::Idle:
+			pixmap = &m_idle;
+			break;
+		case PetState::Working:
+			pixmap = &m_working;
+			break;
+		case PetState::NeedsInput:
+			pixmap = &m_waiting;
+			break;
+		case PetState::Error:
+			pixmap = &m_error;
+			break;
+		}
 	}
 	painter.drawPixmap(0, 0, *pixmap);	// 从窗口左上角 (0, 0) 开始画；*pixmap 是解引用，得到图片本身
 }
@@ -237,7 +248,8 @@ void Petwindow::mousePressEvent(QMouseEvent* event)
 	if (event->button() == Qt::LeftButton)	// button()：这一次是哪个键触发的
 	{
 		m_dragOffset = event->position().toPoint();	// 记下鼠标在窗口里的位置（窗口坐标）
-		m_pressGlobalPos = event->globalPosition().toPoint();	// 记下按下时的屏幕坐标，松开时用来判断是点击还是拖动
+		m_pressGlobalPos = event->globalPosition().toPoint();	// 记下按下时的屏幕坐标，移动时用来判断是否开始了拖动
+		// 注意：按下时还不知道是点击还是拖动，所以这里不换图，等鼠标真的移动了一段距离再说
 	}
 	if (event->button() == Qt::RightButton)
 	{
@@ -245,11 +257,19 @@ void Petwindow::mousePressEvent(QMouseEvent* event)
 	}
 }
 
-// 鼠标移动：按住左键时让窗口跟着鼠标走
+// 鼠标移动：按住左键时让窗口跟着鼠标走；移动得足够远时，判定为开始拖动
 void Petwindow::mouseMoveEvent(QMouseEvent* event)
 {
 	if (event->buttons() & Qt::LeftButton)	// buttons()：此刻按住了哪些键（位掩码），用 & 判断左键是否按着
 	{
+		// "从不是拖动变成拖动"的那一刻：离按下的位置（横向 + 纵向，曼哈顿距离）达到系统规定的拖动阈值（默认 10 像素）
+		// 用屏幕坐标计算：拖动时窗口本身在移动，窗口坐标的参照点会变
+		// !m_dragging：已经在拖动了就不再进来，避免拖动过程中每移动一次就白白请求一次重画
+		if (!m_dragging && !((m_pressGlobalPos - event->globalPosition().toPoint()).manhattanLength() < QApplication::startDragDistance()))
+		{
+			m_dragging = true;
+			update();	// 改了影响画面的变量，必须请求重画；单纯移动窗口不一定会触发 paintEvent
+		}
 		QPoint temp{ event->globalPosition().toPoint() - m_dragOffset };	// 窗口左上角的新位置 = 鼠标的屏幕坐标 - 偏移量
 		move(temp);	// 把窗口移过去（继承自 QWidget）
 	}
@@ -357,24 +377,25 @@ void Petwindow::activateClaudeWindow()
 	}
 }
 
-// 鼠标松开：判断这次左键操作是"点击"还是"拖动"
+// 鼠标松开：这次左键操作是"点击"还是"拖动"，已经在 mouseMoveEvent 里判断过了，这里直接看 m_dragging
+// （同一件事只在一个地方判断，以后调整规则只需要改一处）
+// 拖动：拖动结束，换回原来的图，并把当前位置保存下来，下次启动时恢复
 // 点击：切换到 Claude 窗口
-// 拖动：拖动结束了，把当前位置保存下来，下次启动时恢复
 // 选在这里保存，而不是在 mouseMoveEvent 里：拖一次只写一次，不会频繁写注册表；单纯点击也不会写
 void Petwindow::mouseReleaseEvent(QMouseEvent* event)
 {
 	if (event->button() == Qt::LeftButton)
 	{
-		// 按下到松开，鼠标移动的距离（横向 + 纵向，曼哈顿距离）小于系统规定的拖动阈值（默认 10 像素），就算点击
-		// 用屏幕坐标计算：拖动时窗口本身在移动，窗口坐标的参照点会变
-		if ((m_pressGlobalPos - event->globalPosition().toPoint()).manhattanLength() < QApplication::startDragDistance())
+		if (m_dragging)	// 拖动
 		{
-			activateClaudeWindow();	// 点击
-		}
-		else
-		{
+			m_dragging = false;
+			update();	// 请求重画，换回 Claude 当前状态对应的图；不请求的话会一直保持被拎起来的样子
 			QSettings settings{ kSettingsName, kSettingsName };	// 和构造函数里读取时用同样的名字
 			settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）
+		}
+		else	// 点击
+		{
+			activateClaudeWindow();
 		}
 	}
 }
@@ -393,4 +414,13 @@ PetState Petwindow::combinedState()const
 		{
 			return urgency(a.second) < urgency(b.second);
 		})->second;
+}
+
+// 查询是否成功开始监听端口。监听失败通常是因为端口已被占用（比如 ClauPet 已经在运行），
+// main 会根据它决定是正常启动，还是提示后退出
+// 常函数：只读不改。在常函数里 m_server 也被当成 const 对象，
+// 能调用它的 isListening()，是因为 Qt 把 QTcpServer::isListening() 也声明成了常函数
+bool Petwindow::isListening()const
+{
+	return m_server.isListening();
 }

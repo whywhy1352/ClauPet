@@ -15,6 +15,7 @@ public:
 	Petwindow();					// 构造函数：恢复上次的位置、设置窗口外观、加载图片、开始监听端口、创建菜单和托盘图标
 	void setState(PetState state);	// 切换宠物状态，并通知 Qt 重画窗口（setter）
 	PetState state()const;			// 查询当前状态；常函数，只读不改（getter）
+	bool isListening()const;		// 是否成功监听了端口；失败说明端口被占用（可能已经有一个 ClauPet 在运行）
 protected:
 	// 下面 5 个都是重写 QWidget 的虚函数，由 Qt 在对应事件发生时自动调用
 	void paintEvent(QPaintEvent* event) override;		// 窗口需要重画时：按当前状态画出对应的图片
@@ -29,15 +30,19 @@ private:
 	QPixmap m_working;					// 工作中状态的图片
 	QPixmap m_waiting;					// 等待授权状态的图片
 	QPixmap m_error;					// 出错状态的图片
+	QPixmap m_dragged;					// 被拖动时"被拎起来"的图片
 	QTcpServer m_server;				// 本地服务器：在 127.0.0.1 的端口上等待 Claude Code 发来的 HTTP 请求
 	// 注意顺序：成员按声明顺序构造、按相反顺序析构。
 	// m_tray 记着 m_menu 的地址，所以 m_menu 必须先声明（后析构），保证托盘销毁之前菜单一直有效
 	QMenu m_menu;						// 右键菜单：托盘图标和宠物本身共用
 	QSystemTrayIcon m_tray;				// 任务栏右下角的托盘图标
-	QPoint m_pressGlobalPos;			// 左键按下时鼠标的屏幕坐标；松开时比较距离，区分点击和拖动
+	QPoint m_pressGlobalPos;			// 左键按下时鼠标的屏幕坐标；移动时比较距离，判断是否开始了拖动
 	void handleHookEvent(const QByteArray& body);	// 解析请求体里的 JSON，更新对应会话的状态，再刷新宠物
 	// 每个 Claude Code 会话各自的状态：会话 ID → 状态。同时开着多个会话时，靠它避免互相覆盖
 	std::map<QString, PetState> m_sessionStates;
 	PetState combinedState()const;	// 合并所有会话的状态，返回最紧急的那个；常函数，只读不改
 	void activateClaudeWindow();	// 把 Claude 桌面应用的窗口切换到最前面（用 Windows API）
+	// 是否正在被拖动。这是你和宠物之间的互动状态，不是 Claude 的状态，所以不放进 PetState
+	// 由 mouseMoveEvent 设为 true，mouseReleaseEvent 改回 false；为 true 时 paintEvent 画 m_dragged
+	bool m_dragging{ false };
 };
