@@ -165,12 +165,11 @@ ClauPet 没有运行时，hook 的请求会连接失败。Claude Code 把这种�
 
 ClauPet 还在持续开发中，接下来计划做的事情：
 
-- **v1.1 更生动**：鼠标悬停时轻轻浮动；拖动时显示被拎起来的样子；用气泡文字显示 Claude 正在做什么
 - **v1.2 整理架构**：把"接收事件"和"绘制宠物"拆开，为更换渲染方式做准备
 - **长期**：支持 Live2D 模型
 - **其他候选**：可自定义端口；托盘菜单里的"开机启动"开关；测试并支持命令行版 Claude Code
 
-欢迎在 [Issues](../../issues) 里提建议。
+欢迎在 [Issues](../../issues) 里提建议。各版本已经完成的改动见 [更新日志](CHANGELOG.md)。
 
 ### 许可
 
@@ -341,12 +340,11 @@ Steps:
 
 ClauPet is under active development. Planned next steps:
 
-- **v1.1 More lively**: a gentle float on hover; a "lifted" pose while dragged; a speech bubble showing what Claude is doing
 - **v1.2 Refactoring**: separate event handling from rendering, to make other rendering methods possible
 - **Long term**: Live2D model support
 - **Other ideas**: configurable port; a "start with Windows" toggle in the tray menu; testing and supporting the Claude Code CLI
 
-Suggestions are welcome in [Issues](../../issues).
+Suggestions are welcome in [Issues](../../issues). See the [Changelog](CHANGELOG.md) for what changed in each version.
 
 ### License
 
