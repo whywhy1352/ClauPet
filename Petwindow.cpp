@@ -13,6 +13,9 @@
 #include<algorithm>		// std::max_element：在多个会话里找出最紧急的状态
 #include<QTimer>			// QTimer::singleShot：过一段时间后执行一次（出错状态自动恢复）
 #include<cmath>			// std::sin：计算浮动动画的位移
+#include<QFileInfo>		// 目前没有用到（原先"显示文件名"的方案留下的），可以删掉
+#include<QFont>			// 气泡文字的字体
+#include<QFontMetrics>	// "字体量尺"：算出一段文字的宽度，以及把太长的文字截断成"…"
 // Windows API：FindWindowW、SetForegroundWindow 等，用来把 Claude 窗口切换到前台
 // NOMINMAX 必须写在 #include 之前：否则 windows.h 会定义名叫 min、max 的宏，弄坏 std::min / std::max
 // 只在这个 .cpp 里包含，不放进头文件，免得包含 Petwindow.h 的文件都被这些宏影响
@@ -31,6 +34,10 @@ constexpr double kFloatAmplitude{ 4.0 };   // 浮动的幅度（逻辑像素）�
 constexpr double kFloatPeriodSec{ 3.0 };   // 浮动一个来回的秒数
 constexpr int kFrameIntervalMs{ 33 };      // 定时器间隔：33 毫秒 ≈ 每秒 30 次
 constexpr double kPi{ 3.14159265358979 };	// 圆周率
+// ---- 气泡（显示"会话标题：工具名"）----
+constexpr int kBubbleHeight{ 30 };		// 宠物头顶留给气泡的高度（逻辑像素）；宠物整体往下挪这么多
+constexpr int kBubbleFontSize{ 9 };		// 气泡文字的字号（磅）
+constexpr int kBubblePadding{ 8 };		// 文字左右两边的留白（逻辑像素）
 
 // 加载一张宠物图片，并缩放到适合当前屏幕的大小
 // path：资源路径，比如 ":/assets/pet/idle.png"
@@ -138,8 +145,9 @@ static bool stateHookEvent(const QString& eventName, const QString& toolName, Pe
 Petwindow::Petwindow()
 {
 	qreal dpr{ devicePixelRatioF() };	// 当前屏幕的缩放比例（继承自 QWidget）
-	// 窗口大小（逻辑像素）：高度上下各留出一个振幅，浮动时图片才不会被窗口边缘切掉
-	resize(kPetSize, kPetSize + 2 * static_cast<int>(kFloatAmplitude));
+	// 窗口大小（逻辑像素）：高度上下各留出一个振幅，浮动时图片才不会被窗口边缘切掉；
+	// 顶部再留出 kBubbleHeight 给气泡。没画东西的地方是透明的，鼠标会穿透过去
+	resize(kPetSize, kPetSize + 2 * static_cast<int>(kFloatAmplitude) + kBubbleHeight);
 	// ---- 浮动动画的准备 ----
 	// m_animTimer 是"闹钟"：只负责"什么时候重画"。这里只设置间隔，不启动，平时不浮动（enterEvent 里才启动）
 	m_animTimer.setInterval(kFrameIntervalMs);
@@ -271,12 +279,36 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 	if (pixmap == &m_dragged)
 	{
 		// 被拎在手里时不浮动；画在中间位置（纵坐标 = 振幅），开始拖动时图片才不会往上跳
-		painter.drawPixmap(0, kFloatAmplitude, *pixmap);
+		// 所有纵坐标都要再加上 kBubbleHeight：宠物画在气泡区域的下方
+		painter.drawPixmap(0, kFloatAmplitude + kBubbleHeight, *pixmap);
 	}
 	else
 	{
 		// 用 QPointF（小数坐标）：可以画在"半个像素"的位置，浮动才平滑；QPoint 会取整，一格一格地跳
-		painter.drawPixmap(QPointF(0, kFloatAmplitude + offset), *pixmap);
+		painter.drawPixmap(QPointF(0, kFloatAmplitude + offset + kBubbleHeight), *pixmap);
+	}
+	// ---- 气泡：画在宠物之后，所以会盖在最上层 ----
+	// 有文字才画；被拎在手里时不显示
+	if (!m_bubbleText.isEmpty() && !m_dragging)
+	{
+		// ① 字体：在画笔当前字体的基础上改字号
+		QFont font{ painter.font() };
+		font.setPointSize(kBubbleFontSize);
+		painter.setFont(font);
+		// ② 太长就截断：窗口只有 kPetSize 宽，放不下的部分从右边截掉，换成"…"（有些会话标题很长）
+		QFontMetrics metrics{ font };
+		const QString text{ metrics.elidedText(m_bubbleText,Qt::ElideRight,width() - 2 * kBubblePadding) };
+		// ③ 气泡的矩形：宽度跟着文字走，水平居中；QRectF 的参数是 左上角 x、y，宽，高
+		const int bubbleWidth{ metrics.horizontalAdvance(text) + 2 * kBubblePadding };   // 文字实际的宽度 + 留白
+		const QRectF bubbleRect{ (width() - bubbleWidth) / 2.0, 2.0, static_cast<qreal>(bubbleWidth), kBubbleHeight - 6.0 };
+		// ④ 圆角矩形：先设置颜色再画（和 M2 时"先蘸颜料再下笔"一样）
+		// 开头那行抗锯齿在这里派上用场：没有它，圆角会有锯齿
+		painter.setPen(QColor(217, 119, 87));			// 边框：橙色，和宠物的配色一致
+		painter.setBrush(QColor(255, 255, 255, 230));	// 填充：白色，第 4 个参数是不透明度（0–255）
+		painter.drawRoundedRect(bubbleRect, 8, 8);		// 后两个参数是圆角半径
+		// ⑤ 文字：在矩形里居中
+		painter.setPen(QColor(80, 50, 40));				// 文字：深棕色
+		painter.drawText(bubbleRect, Qt::AlignCenter, text);
 	}
 }
 
@@ -313,10 +345,17 @@ void Petwindow::mouseMoveEvent(QMouseEvent* event)
 	}
 }
 
-// 切换状态：改状态的唯一入口，保证"改状态"和"重画"总是一起发生
+// 切换状态：改状态的唯一入口，保证"状态变了就必须一起做的事"不会被漏掉：
+// 变成空闲时清空气泡，并且总是请求重画
 void Petwindow::setState(PetState state)
 {
 	m_state = state;
+	// 所有会话都空闲了：清空气泡。放在这里，而不是 handleHookEvent 里：
+	// 出错自动恢复的定时器、按数字键 1 测试，也都会经过这里，气泡就不会残留
+	if (m_state == PetState::Idle)
+	{
+		m_bubbleText.clear();
+	}
 	update();	// 通知 Qt 稍后重画窗口（会触发 paintEvent），不要直接调用 paintEvent
 }
 
@@ -347,8 +386,9 @@ void Petwindow::keyPressEvent(QKeyEvent* event)
 }
 
 // 处理 Claude Code 发来的一个 hook 事件：
-// 1. 更新发出这个事件的那个会话的状态（会话结束就从记录里删掉）
-// 2. 把所有会话的状态合并，决定宠物显示什么
+// 1. 记录会话标题；调用工具时更新气泡文字
+// 2. 更新发出这个事件的那个会话的状态（会话结束就从记录里删掉）
+// 3. 把所有会话的状态合并，决定宠物显示什么
 // 不认识的事件（或者 JSON 解析失败得到空字符串）不会改变任何会话的状态
 void Petwindow::handleHookEvent(const QByteArray& body)
 {
@@ -356,6 +396,31 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 	const QString eventName{ json.value("hook_event_name").toString() };	// 发生了什么事
 	const QString sessionId{ json.value("session_id").toString() };		// 是哪个会话发来的
 	const QString toolName{ json.value("tool_name").toString() };			// 调用的是哪个工具（没有就是空字符串）
+	const QString sessionTitle{ json.value("session_title").toString() };	// 会话标题（实测只有 UserPromptSubmit 才带，其他事件是空字符串）
+	// ---- 气泡文字 ----
+	// 只有你发消息时才能拿到标题，所以先记下来，等调用工具时再用；同一个会话的标题可能会变，每次都更新
+	if (!sessionTitle.isEmpty())
+	{
+		m_sessionTitles[sessionId] = sessionTitle;	// 这里本来就要插入或更新，用 [] 正合适
+	}
+	// 调用工具时：气泡显示"会话标题：工具名"，多个会话同时工作时，看气泡就知道是哪个会话在干活
+	// 显示的是最近一次调用工具的文字；所有会话都空闲时，由 setState 清空
+	if (eventName == "PreToolUse")
+	{
+		// 查找用 find 而不是 []：还不知道标题时，[] 会插入一个空标题（和"幽灵会话"是同一个坑）
+		auto it = m_sessionTitles.find(sessionId);
+		if (it != m_sessionTitles.end())
+		{
+			m_bubbleText = it->second + "：" + toolName;
+		}
+		else
+		{
+			// 不知道标题：比如宠物是在会话进行到一半时才启动的，或者这个会话的标题是空的
+			m_bubbleText = toolName;
+		}
+	}
+	// 不需要在改完 m_bubbleText 后单独 update()：下面的 setState 里会请求重画，
+	// 而真正的重画要等这个函数返回、回到事件循环之后才发生，那时读到的已经是最终的文字
 	qDebug().noquote() << eventName;	// 调试用：在 VS 的"输出"窗口里能看到
 	qDebug().noquote() << sessionId;
 	qDebug().noquote() << toolName;
@@ -363,6 +428,7 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 	if (eventName == "SessionEnd")
 	{
 		m_sessionStates.erase(sessionId);	// 会话结束：从记录里删掉（删一个不存在的键也是安全的）
+		m_sessionTitles.erase(sessionId);	// 标题也要一起清理，否则 m_sessionTitles 会越积越多
 	}
 	else if (stateHookEvent(eventName, toolName, newState))	// 认识这个事件才更新
 	{
@@ -389,6 +455,7 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 		}
 	}
 	setState(combinedState());	// 先算出合并后的状态，再通过 setState 统一修改并重画
+	qDebug() << m_bubbleText;	// 调试用：当前的气泡文字
 }
 
 // 把 Claude 桌面应用的窗口切换到最前面（左键单击宠物时调用）

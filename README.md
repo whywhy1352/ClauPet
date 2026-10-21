@@ -27,6 +27,7 @@ ClauPet 是一个给 **Claude Code** 用的 Windows 桌面宠物。它浮在桌�
 
 - **实时反映 Claude Code 的状态**：空闲、工作中、需要你介入、出错，共 4 种状态
 - **支持多个会话同时工作**：一个会话结束了、另一个还在工作时，宠物不会错误地变回空闲
+- **气泡提示**：Claude 调用工具时，宠物头顶会显示"会话标题：工具名"，开着多个会话时一眼就知道是哪个在干活
 - **把鼠标放在宠物身上**：她会轻轻地上下浮动
 - **单击宠物**：切换到 Claude 桌面应用的窗口
 - **拖动宠物**：随意摆放，拖动时她会像被拎起后领一样悬在空中；下次启动时会出现在上次的位置
@@ -127,7 +128,8 @@ ClauPet 没有运行时，hook 的请求会连接失败。Claude Code 把这种�
 ### 隐私与安全
 
 - ClauPet 只监听 `127.0.0.1`（本机），其他电脑无法连接
-- 它只读取事件中的 `hook_event_name`、`session_id` 和 `tool_name` 来判断状态，**不会保存、也不会向任何地方发送**你的对话内容
+- 它只读取事件中的 `hook_event_name`、`session_id`、`tool_name` 和 `session_title`，**不会保存到磁盘、也不会向任何地方发送**你的对话内容
+- 注意：气泡会在屏幕上显示**会话标题**和**工具名**。共享屏幕、录屏或直播时，别人也能看到
 - 本地保存的唯一数据是宠物的位置，存放在注册表 `HKEY_CURRENT_USER\Software\ClauPet` 中
 
 ### 常见问题
@@ -201,6 +203,7 @@ ClauPet is a Windows desktop pet for **Claude Code**. It floats on your desktop 
 
 - **Reflects Claude Code's state in real time**: idle, working, needs your input, and error
 - **Works with multiple sessions**: if one session finishes while another is still working, the pet keeps showing "working"
+- **Speech bubble**: when Claude uses a tool, a bubble above the pet shows "session title: tool name", so you can tell which session is busy at a glance
 - **Hover over the pet** and she gently floats up and down
 - **Click the pet** to bring the Claude desktop app's window to the front
 - **Drag the pet** anywhere; she dangles as if lifted by her collar while you drag, and remembers her position across restarts
@@ -301,7 +304,8 @@ When the pet is hidden, the program keeps running in the background and keeps re
 ### Privacy and security
 
 - ClauPet only listens on `127.0.0.1` (this computer); other machines cannot connect to it
-- It only reads `hook_event_name`, `session_id` and `tool_name` from each event to decide its state. It **does not store or send** your conversation anywhere
+- It only reads `hook_event_name`, `session_id`, `tool_name` and `session_title` from each event. It **does not write them to disk or send** your conversation anywhere
+- Note: the bubble shows **session titles** and **tool names** on screen, so others can see them while you share your screen, record, or stream
 - The only data it saves locally is the pet's position, in the registry under `HKEY_CURRENT_USER\Software\ClauPet`
 
 ### Troubleshooting

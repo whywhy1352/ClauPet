@@ -54,4 +54,7 @@ private:
 	// 浮动动画用的两个计时工具，名字很像，作用完全不同：
 	QTimer m_animTimer;            // "闹钟"：悬停时每 33 毫秒响一次，每次请求重画（负责"什么时候画"）
 	QElapsedTimer m_animClock;     // "秒表"：记录开始浮动后过了多久，paintEvent 按它算位置（负责"画在哪"）
+	QString m_bubbleText;							// 气泡里要显示的文字（"会话标题：工具名"）；空字符串表示不显示气泡
+	// 每个会话的标题：会话 ID → 标题。标题只在你发消息时才收得到，所以先记下来，调用工具时再拿出来用
+	std::map<QString, QString> m_sessionTitles;
 };
