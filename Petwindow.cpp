@@ -12,6 +12,7 @@
 #include<QSettings>		// 保存配置（宠物的位置）；在 Windows 上存在注册表里，程序关掉后数据还在
 #include<algorithm>		// std::max_element：在多个会话里找出最紧急的状态
 #include<QTimer>			// QTimer::singleShot：过一段时间后执行一次（出错状态自动恢复）
+#include<cmath>			// std::sin：计算浮动动画的位移
 // Windows API：FindWindowW、SetForegroundWindow 等，用来把 Claude 窗口切换到前台
 // NOMINMAX 必须写在 #include 之前：否则 windows.h 会定义名叫 min、max 的宏，弄坏 std::min / std::max
 // 只在这个 .cpp 里包含，不放进头文件，免得包含 Petwindow.h 的文件都被这些宏影响
@@ -24,6 +25,12 @@ constexpr int kPetSize{ 180 };		// 宠物窗口和图片的大小，单位是逻
 // 读取和保存必须用同样的名字，所以定义成常量，只在这一处修改
 constexpr const char* kSettingsName{ "ClauPet" };
 constexpr int kErrorRecoverMs{ 8000 };	// 出错状态保持多久（毫秒）后自动恢复为空闲
+// ---- 浮动动画（鼠标悬停在宠物身上时才浮动）----
+// 位移 = 振幅 × sin(2π × 经过的秒数 / 周期)，在 -振幅 到 +振幅 之间平滑地来回变化
+constexpr double kFloatAmplitude{ 4.0 };   // 浮动的幅度（逻辑像素）；窗口上下各要多留出这么高
+constexpr double kFloatPeriodSec{ 3.0 };   // 浮动一个来回的秒数
+constexpr int kFrameIntervalMs{ 33 };      // 定时器间隔：33 毫秒 ≈ 每秒 30 次
+constexpr double kPi{ 3.14159265358979 };	// 圆周率
 
 // 加载一张宠物图片，并缩放到适合当前屏幕的大小
 // path：资源路径，比如 ":/assets/pet/idle.png"
@@ -131,7 +138,20 @@ static bool stateHookEvent(const QString& eventName, const QString& toolName, Pe
 Petwindow::Petwindow()
 {
 	qreal dpr{ devicePixelRatioF() };	// 当前屏幕的缩放比例（继承自 QWidget）
-	resize(kPetSize, kPetSize);	// 窗口大小（逻辑像素）
+	// 窗口大小（逻辑像素）：高度上下各留出一个振幅，浮动时图片才不会被窗口边缘切掉
+	resize(kPetSize, kPetSize + 2 * static_cast<int>(kFloatAmplitude));
+	// ---- 浮动动画的准备 ----
+	// m_animTimer 是"闹钟"：只负责"什么时候重画"。这里只设置间隔，不启动，平时不浮动（enterEvent 里才启动）
+	m_animTimer.setInterval(kFrameIntervalMs);
+	// m_animClock 是"秒表"：负责"现在过去了多久"，paintEvent 按它计算位置
+	// 一开始就启动：对没启动过的 QElapsedTimer 调用 elapsed()/restart() 是未定义行为
+	m_animClock.start();
+	// 闹钟每响一次，就请 Qt 重画一次。这里没有任何变量改变，变化的是"时间"本身，
+	// Qt 不知道时间会影响画面，所以要由定时器不停地请求重画
+	connect(&m_animTimer, &QTimer::timeout, this, [this]()
+		{
+		update();
+		});
 	// ---- 恢复上次的位置 ----
 	// 两个参数（组织名、程序名）决定数据存在注册表的哪里，见文件顶部的 kSettingsName
 	// 必须和 mouseReleaseEvent 里保存时用的名字一样，才能读到同一份数据
@@ -214,6 +234,15 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 	QPainter painter(this);	// 创建画笔，画在"我自己"这个窗口上；函数结束时析构，自动结束绘制
 	painter.setRenderHint(QPainter::Antialiasing);	// 抗锯齿（以前画圆时用的，画图片用不到）
 	const QPixmap* pixmap{ &m_idle };	// 指向这次要画的图片；常量指针：可以改指向，不能通过它改图片
+	// 浮动的位移：只有闹钟在响（鼠标悬停中）时才计算，否则为 0，宠物静止在中间
+	qreal offset{};
+	if (m_animTimer.isActive())
+	{
+		// 用"实际经过的时间"计算，而不是"重画了第几次"：电脑卡顿时定时器会迟到，按次数算动画就会变慢
+		// 必须除以 1000.0（小数）：整数除以整数会丢掉小数，时间就变成每秒才跳一次
+		const qreal timeElapsed{ static_cast<qreal>(m_animClock.elapsed() / 1000.0) };
+		offset = kFloatAmplitude * std::sin(2 * kPi * timeElapsed / kFloatPeriodSec);
+	}
 	// 先判断是否正在被拖动：拖动是你和宠物之间的互动，优先于 Claude 的状态显示
 	// （必须写在 switch 之前，和 stateHookEvent 里"越特殊的规则越靠前"是一个道理）
 	// 拖动期间 Claude 的状态照常更新，只是暂时看不到，松开后就会显示出来
@@ -239,7 +268,16 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 			break;
 		}
 	}
-	painter.drawPixmap(0, 0, *pixmap);	// 从窗口左上角 (0, 0) 开始画；*pixmap 是解引用，得到图片本身
+	if (pixmap == &m_dragged)
+	{
+		// 被拎在手里时不浮动；画在中间位置（纵坐标 = 振幅），开始拖动时图片才不会往上跳
+		painter.drawPixmap(0, kFloatAmplitude, *pixmap);
+	}
+	else
+	{
+		// 用 QPointF（小数坐标）：可以画在"半个像素"的位置，浮动才平滑；QPoint 会取整，一格一格地跳
+		painter.drawPixmap(QPointF(0, kFloatAmplitude + offset), *pixmap);
+	}
 }
 
 // 鼠标按下：左键记录拖动起点，右键弹出菜单（和托盘图标的菜单是同一个）
@@ -423,4 +461,26 @@ PetState Petwindow::combinedState()const
 bool Petwindow::isListening()const
 {
 	return m_server.isListening();
+}
+
+// 窗口被隐藏（托盘菜单里的"隐藏"）：停止浮动动画，看不见的窗口没必要一直重画
+void Petwindow::hideEvent(QHideEvent* event)
+{
+	m_animTimer.stop();
+}
+
+// 鼠标移到宠物身上：开始浮动
+// 透明区域的点击和悬停都会穿透，所以只有鼠标真的在宠物身上时才算"进入"
+void Petwindow::enterEvent(QEnterEvent*)
+{
+	m_animClock.restart();    // 秒表归零：sin(0) = 0，浮动从中间位置开始，不会一开始就跳
+	m_animTimer.start();      // 闹钟开始响：每 33 毫秒重画一次
+}
+
+// 鼠标从宠物身上移开：停止浮动，回到中间
+// 移开的那一刻宠物可能正浮在高处，所以会"跳"回中间一下（这是有意接受的简化）
+void Petwindow::leaveEvent(QEvent*)
+{
+	m_animTimer.stop();
+	update();	// 最后重画一次：闹钟停了，paintEvent 里的位移为 0，回到中间
 }

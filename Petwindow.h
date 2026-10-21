@@ -7,6 +7,9 @@
 #include<QSystemTrayIcon>	// 成员 m_tray 是 QSystemTrayIcon 对象，需要它的完整定义
 #include<QMenu>			// 成员 m_menu 是 QMenu 对象，需要它的完整定义
 #include<map>			// 成员 m_sessionStates 是 std::map
+#include<QTimer>			// 成员 m_animTimer 是 QTimer 对象，需要它的完整定义
+#include<QElapsedTimer>	// 成员 m_animClock 是 QElapsedTimer 对象，需要它的完整定义
+#include<QEnterEvent>	// enterEvent 的参数类型
 
 // 宠物窗口：继承 QWidget，负责显示宠物、响应鼠标键盘、接收 Claude Code 发来的事件
 class Petwindow : public QWidget
@@ -17,12 +20,15 @@ public:
 	PetState state()const;			// 查询当前状态；常函数，只读不改（getter）
 	bool isListening()const;		// 是否成功监听了端口；失败说明端口被占用（可能已经有一个 ClauPet 在运行）
 protected:
-	// 下面 5 个都是重写 QWidget 的虚函数，由 Qt 在对应事件发生时自动调用
+	// 下面 8 个都是重写 QWidget 的虚函数，由 Qt 在对应事件发生时自动调用
 	void paintEvent(QPaintEvent* event) override;		// 窗口需要重画时：按当前状态画出对应的图片
 	void mousePressEvent(QMouseEvent* event) override;	// 鼠标按下时：左键记录拖动起点，右键弹出菜单
 	void mouseMoveEvent(QMouseEvent* event) override;	// 鼠标移动时：按住左键就拖动窗口
 	void keyPressEvent(QKeyEvent* event) override;		// 键盘按下时：数字键 1~4 手动切换状态（测试用）
 	void mouseReleaseEvent(QMouseEvent* event) override;	// 鼠标松开时：左键点击切换到 Claude 窗口，拖动结束则保存当前位置
+	void hideEvent(QHideEvent* event) override;			// 窗口隐藏时：停止浮动动画
+	void enterEvent(QEnterEvent* event) override;		// 鼠标移到宠物身上时：开始浮动
+	void leaveEvent(QEvent* event) override;			// 鼠标从宠物身上移开时：停止浮动
 private:
 	QPoint m_dragOffset;				// 左键按下时，鼠标在窗口里的位置；拖动时用它保持相对位置不变
 	PetState m_state{ PetState::Idle };	// 当前状态，程序启动时是空闲
@@ -45,4 +51,7 @@ private:
 	// 是否正在被拖动。这是你和宠物之间的互动状态，不是 Claude 的状态，所以不放进 PetState
 	// 由 mouseMoveEvent 设为 true，mouseReleaseEvent 改回 false；为 true 时 paintEvent 画 m_dragged
 	bool m_dragging{ false };
+	// 浮动动画用的两个计时工具，名字很像，作用完全不同：
+	QTimer m_animTimer;            // "闹钟"：悬停时每 33 毫秒响一次，每次请求重画（负责"什么时候画"）
+	QElapsedTimer m_animClock;     // "秒表"：记录开始浮动后过了多久，paintEvent 按它算位置（负责"画在哪"）
 };

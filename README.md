@@ -27,6 +27,7 @@ ClauPet 是一个给 **Claude Code** 用的 Windows 桌面宠物。它浮在桌�
 
 - **实时反映 Claude Code 的状态**：空闲、工作中、需要你介入、出错，共 4 种状态
 - **支持多个会话同时工作**：一个会话结束了、另一个还在工作时，宠物不会错误地变回空闲
+- **把鼠标放在宠物身上**：她会轻轻地上下浮动
 - **单击宠物**：切换到 Claude 桌面应用的窗口
 - **拖动宠物**：随意摆放，拖动时她会像被拎起后领一样悬在空中；下次启动时会出现在上次的位置
 - **右键菜单 / 托盘图标**：隐藏、显示、退出
@@ -115,6 +116,7 @@ ClauPet 没有运行时，hook 的请求会连接失败。Claude Code 把这种�
 
 | 操作 | 效果 |
 |---|---|
+| 鼠标悬停在宠物身上 | 宠物轻轻地上下浮动 |
 | 左键单击宠物 | 切换到 Claude 桌面应用的窗口（如果最小化了会先还原） |
 | 左键拖动宠物 | 移动位置（拖动时会显示被拎起来的样子），松开时自动保存 |
 | 右键宠物 / 右键托盘图标 | 菜单：隐藏或显示宠物、退出 |
@@ -161,7 +163,7 @@ ClauPet 没有运行时，hook 的请求会连接失败。Claude Code 把这种�
 
 ClauPet 还在持续开发中，接下来计划做的事情：
 
-- **v1.1 更生动**：轻微的浮动动画；Claude 回复完毕时短暂地开心一下；用气泡文字显示 Claude 正在使用的工具
+- **v1.1 更生动**：鼠标悬停时轻轻浮动；拖动时显示被拎起来的样子；用气泡文字显示 Claude 正在做什么
 - **v1.2 整理架构**：把"接收事件"和"绘制宠物"拆开，为更换渲染方式做准备
 - **长期**：支持 Live2D 模型
 - **其他候选**：可自定义端口；托盘菜单里的"开机启动"开关；测试并支持命令行版 Claude Code
@@ -199,6 +201,7 @@ ClauPet is a Windows desktop pet for **Claude Code**. It floats on your desktop 
 
 - **Reflects Claude Code's state in real time**: idle, working, needs your input, and error
 - **Works with multiple sessions**: if one session finishes while another is still working, the pet keeps showing "working"
+- **Hover over the pet** and she gently floats up and down
 - **Click the pet** to bring the Claude desktop app's window to the front
 - **Drag the pet** anywhere; she dangles as if lifted by her collar while you drag, and remembers her position across restarts
 - **Right-click menu / tray icon**: hide, show, or quit
@@ -287,6 +290,7 @@ Press `Win + R`, type `shell:startup`, press Enter, and put a shortcut to `ClauP
 
 | Action | Result |
 |---|---|
+| Hover over the pet | She gently floats up and down |
 | Left-click the pet | Bring the Claude desktop app's window to the front (restoring it if minimized) |
 | Left-drag the pet | Move it (she dangles as if lifted while dragged); the position is saved when you release the mouse |
 | Right-click the pet or the tray icon | Menu: hide/show the pet, or quit |
@@ -333,7 +337,7 @@ Steps:
 
 ClauPet is under active development. Planned next steps:
 
-- **v1.1 More lively**: a gentle floating animation; a short celebration when Claude finishes; a speech bubble showing which tool Claude is using
+- **v1.1 More lively**: a gentle float on hover; a "lifted" pose while dragged; a speech bubble showing what Claude is doing
 - **v1.2 Refactoring**: separate event handling from rendering, to make other rendering methods possible
 - **Long term**: Live2D model support
 - **Other ideas**: configurable port; a "start with Windows" toggle in the tray menu; testing and supporting the Claude Code CLI
