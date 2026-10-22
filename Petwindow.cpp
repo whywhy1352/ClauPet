@@ -13,7 +13,6 @@
 #include<algorithm>		// std::max_element：在多个会话里找出最紧急的状态
 #include<QTimer>			// QTimer::singleShot：过一段时间后执行一次（出错状态自动恢复）
 #include<cmath>			// std::sin：计算浮动动画的位移
-#include<QFileInfo>		// 目前没有用到（原先"显示文件名"的方案留下的），可以删掉
 #include<QFont>			// 气泡文字的字体
 #include<QFontMetrics>	// "字体量尺"：算出一段文字的宽度，以及把太长的文字截断成"…"
 // Windows API：FindWindowW、SetForegroundWindow 等，用来把 Claude 窗口切换到前台
@@ -22,7 +21,6 @@
 #define NOMINMAX
 #include<windows.h>
 
-constexpr quint16 kPort{ 52790 };	// 监听的端口号；Claude Code 的 HTTP hook 要发到这个端口
 constexpr int kPetSize{ 180 };		// 宠物窗口和图片的大小，单位是逻辑像素（会乘上屏幕缩放比例）
 // QSettings 的组织名和程序名，决定配置存在注册表的哪里：HKEY_CURRENT_USER\Software\ClauPet\ClauPet
 // 读取和保存必须用同样的名字，所以定义成常量，只在这一处修改
@@ -142,13 +140,35 @@ static bool stateHookEvent(const QString& eventName, const QString& toolName, Pe
 }
 
 // 构造函数：程序启动时执行一次，只负责"设置"和"登记"，真正处理事件要等事件循环开始
+// 每一步的细节都放在下面对应的私有成员函数里，这里只当"目录"，一眼就能看出启动时做了哪几件事
+// 顺序要求：loadImages() 必须在 setUpTrayMenu() 之前，因为托盘图标用的是 m_idle 这张图，
+// 反过来的话，设置托盘时图片还没加载，托盘里会是一个空白图标。其他几步之间互不影响
 Petwindow::Petwindow()
 {
-	qreal dpr{ devicePixelRatioF() };	// 当前屏幕的缩放比例（继承自 QWidget）
+	setUpWindow();
+	setUpAnimation();
+	restorePosition();
+	loadImages();
+	setUpServer();
+	setUpTrayMenu();
+}
+
+// ---- 以下 6 个函数只在构造时调用一次，所以都放在 private 里 ----
+
+// 窗口的大小和外观：无边框、始终置顶、不在任务栏显示、背景透明
+void Petwindow::setUpWindow()
+{
 	// 窗口大小（逻辑像素）：高度上下各留出一个振幅，浮动时图片才不会被窗口边缘切掉；
 	// 顶部再留出 kBubbleHeight 给气泡。没画东西的地方是透明的，鼠标会穿透过去
 	resize(kPetSize, kPetSize + 2 * static_cast<int>(kFloatAmplitude) + kBubbleHeight);
-	// ---- 浮动动画的准备 ----
+	// 无边框 + 始终置顶 + 工具窗口（不在任务栏显示按钮，改用托盘图标）；用 | 组合三个标志位
+	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
+	setAttribute(Qt::WA_TranslucentBackground);	// 背景透明：没画东西的地方完全透明，点击会穿透到后面的窗口
+}
+
+// 浮动动画的准备：设置好"闹钟"和"秒表"，但不启动闹钟（鼠标悬停时才开始浮动）
+void Petwindow::setUpAnimation()
+{
 	// m_animTimer 是"闹钟"：只负责"什么时候重画"。这里只设置间隔，不启动，平时不浮动（enterEvent 里才启动）
 	m_animTimer.setInterval(kFrameIntervalMs);
 	// m_animClock 是"秒表"：负责"现在过去了多久"，paintEvent 按它计算位置
@@ -158,9 +178,28 @@ Petwindow::Petwindow()
 	// Qt 不知道时间会影响画面，所以要由定时器不停地请求重画
 	connect(&m_animTimer, &QTimer::timeout, this, [this]()
 		{
-		update();
+			update();
 		});
-	// ---- 恢复上次的位置 ----
+}
+
+// 加载 5 张宠物图片，存进成员变量。只在这里加载一次，paintEvent 里直接用
+// 它是成员函数，因为要给 m_idle 等私有成员赋值；真正加载一张图的 loadPetImage 是普通函数，
+// 因为它不需要访问任何成员，只要"路径"和"缩放比例"就够了
+void Petwindow::loadImages()
+{
+	// 当前屏幕的缩放比例（继承自 QWidget）。原来是构造函数里的局部变量，
+	// 拆分之后别的函数看不到它，所以由要用它的这个函数自己算
+	qreal dpr{ devicePixelRatioF() };
+	m_idle = loadPetImage(":/assets/pet/idle.png", dpr);
+	m_working = loadPetImage(":/assets/pet/working.png", dpr);
+	m_waiting = loadPetImage(":/assets/pet/waiting.png", dpr);
+	m_error = loadPetImage(":/assets/pet/error.png", dpr);
+	m_dragged = loadPetImage(":/assets/pet/dragging.png", dpr);	// 被拖动时"被拎起来"的图片（不属于任何 Claude 状态）
+}
+
+// 恢复上次保存的位置（位置在 mouseReleaseEvent 里，拖动结束时保存）
+void Petwindow::restorePosition()
+{
 	// 两个参数（组织名、程序名）决定数据存在注册表的哪里，见文件顶部的 kSettingsName
 	// 必须和 mouseReleaseEvent 里保存时用的名字一样，才能读到同一份数据
 	QSettings settings{ kSettingsName, kSettingsName };
@@ -174,14 +213,12 @@ Petwindow::Petwindow()
 			move(savedPos);
 		}
 	}
-	m_idle = loadPetImage(":/assets/pet/idle.png", dpr);		// 图片只在这里加载一次，paintEvent 里直接用
-	m_working = loadPetImage(":/assets/pet/working.png", dpr);
-	m_waiting = loadPetImage(":/assets/pet/waiting.png", dpr);
-	m_error = loadPetImage(":/assets/pet/error.png", dpr);
-	m_dragged = loadPetImage(":/assets/pet/dragging.png", dpr);	// 被拖动时"被拎起来"的图片（不属于任何 Claude 状态）
-	// 无边框 + 始终置顶 + 工具窗口（不在任务栏显示按钮，改用托盘图标）；用 | 组合三个标志位
-	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
-	setAttribute(Qt::WA_TranslucentBackground);	// 背景透明：没画东西的地方完全透明，点击会穿透到后面的窗口
+}
+
+// 开始监听端口，并登记"收到 Claude Code 的请求时要做什么"
+// 监听失败（端口被占用）时只打印一句，由 main 通过 isListening() 发现并提示用户
+void Petwindow::setUpServer()
+{
 	if (!m_server.listen(QHostAddress::LocalHost, kPort))	// 开始在 127.0.0.1:kPort 上监听，只接受本机的连接
 	{
 		qDebug() << "listen failed" << m_server.errorString();	// 监听失败（比如端口被占用）时打印原因
@@ -192,22 +229,26 @@ Petwindow::Petwindow()
 			QTcpSocket* socket{ m_server.nextPendingConnection() };	// 取出这条新连接；是指针，因为 QObject 不能复制
 			// 登记：这条连接每次收到数据，就执行这个 lambda
 			// [socket]：复制的是指针，指向同一个 socket；[this]：捕获当前窗口，才能调用成员函数 handleHookEvent
-			connect(socket, &QTcpSocket::readyRead, this, [socket,this]()
+			connect(socket, &QTcpSocket::readyRead, this, [socket, this]()
 				{
-					QByteArray body;	// 用来接收请求体（由 tryReadBody 填进去）
+					QByteArray body{};	// 用来接收请求体（由 tryReadBody 填进去）
 					if (!tryReadBody(socket, body))
 					{
 						return;	// 还没收齐：结束这一次执行，等下一次 readyRead
 					}
-					Petwindow::handleHookEvent(body);
+					handleHookEvent(body);
 					socket->write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\nConnection: close\r\n\r\n");	// 回复：200 成功、没有内容、回复完就关闭
 					socket->disconnectFromHost();	// 断开这条连接
 				});
 			// 连接断开后，在安全的时机删除 socket 对象，释放内存
 			connect(socket, &QTcpSocket::disconnected, socket, &QObject::deleteLater);
 		});
+}
 
-	// ---- 右键菜单（托盘图标和宠物本身共用同一个菜单）----
+// 创建右键菜单（托盘图标和宠物本身共用同一个菜单）和托盘图标
+// 必须在 loadImages() 之后调用：托盘图标用的是 m_idle
+void Petwindow::setUpTrayMenu()
+{
 	// 菜单项 1：隐藏 / 显示宠物。addAction 返回指向新菜单项的指针
 	QAction* toggleAction{ m_menu.addAction("Hide pet") };
 	// 点击时执行；[this]：要调用 isVisible/hide/show，[toggleAction]：要修改这一项的文字
@@ -240,7 +281,7 @@ Petwindow::Petwindow()
 void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表示这个参数用不到
 {
 	QPainter painter(this);	// 创建画笔，画在"我自己"这个窗口上；函数结束时析构，自动结束绘制
-	painter.setRenderHint(QPainter::Antialiasing);	// 抗锯齿（以前画圆时用的，画图片用不到）
+	painter.setRenderHint(QPainter::Antialiasing);	// 抗锯齿：让气泡的圆角边缘平滑（贴图片用不到它）
 	const QPixmap* pixmap{ &m_idle };	// 指向这次要画的图片；常量指针：可以改指向，不能通过它改图片
 	// 浮动的位移：只有闹钟在响（鼠标悬停中）时才计算，否则为 0，宠物静止在中间
 	qreal offset{};
@@ -248,7 +289,7 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 	{
 		// 用"实际经过的时间"计算，而不是"重画了第几次"：电脑卡顿时定时器会迟到，按次数算动画就会变慢
 		// 必须除以 1000.0（小数）：整数除以整数会丢掉小数，时间就变成每秒才跳一次
-		const qreal timeElapsed{ static_cast<qreal>(m_animClock.elapsed() / 1000.0) };
+		const qreal timeElapsed{ m_animClock.elapsed() / 1000.0 };
 		offset = kFloatAmplitude * std::sin(2 * kPi * timeElapsed / kFloatPeriodSec);
 	}
 	// 先判断是否正在被拖动：拖动是你和宠物之间的互动，优先于 Claude 的状态显示
@@ -276,11 +317,11 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 			break;
 		}
 	}
-	if (pixmap == &m_dragged)
+	if (m_dragging)	// 正在被拖动：pixmap 在上面已经选成了 m_dragged
 	{
 		// 被拎在手里时不浮动；画在中间位置（纵坐标 = 振幅），开始拖动时图片才不会往上跳
 		// 所有纵坐标都要再加上 kBubbleHeight：宠物画在气泡区域的下方
-		painter.drawPixmap(0, kFloatAmplitude + kBubbleHeight, *pixmap);
+		painter.drawPixmap(QPointF(0, kFloatAmplitude + kBubbleHeight), *pixmap);
 	}
 	else
 	{
@@ -335,7 +376,7 @@ void Petwindow::mouseMoveEvent(QMouseEvent* event)
 		// "从不是拖动变成拖动"的那一刻：离按下的位置（横向 + 纵向，曼哈顿距离）达到系统规定的拖动阈值（默认 10 像素）
 		// 用屏幕坐标计算：拖动时窗口本身在移动，窗口坐标的参照点会变
 		// !m_dragging：已经在拖动了就不再进来，避免拖动过程中每移动一次就白白请求一次重画
-		if (!m_dragging && !((m_pressGlobalPos - event->globalPosition().toPoint()).manhattanLength() < QApplication::startDragDistance()))
+		if (!m_dragging && (m_pressGlobalPos - event->globalPosition().toPoint()).manhattanLength() >= QApplication::startDragDistance())
 		{
 			m_dragging = true;
 			update();	// 改了影响画面的变量，必须请求重画；单纯移动窗口不一定会触发 paintEvent
@@ -421,9 +462,6 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 	}
 	// 不需要在改完 m_bubbleText 后单独 update()：下面的 setState 里会请求重画，
 	// 而真正的重画要等这个函数返回、回到事件循环之后才发生，那时读到的已经是最终的文字
-	qDebug().noquote() << eventName;	// 调试用：在 VS 的"输出"窗口里能看到
-	qDebug().noquote() << sessionId;
-	qDebug().noquote() << toolName;
 	PetState newState{ PetState::Idle };	// 接收 stateHookEvent 换算出的状态（输出参数）
 	if (eventName == "SessionEnd")
 	{
@@ -531,7 +569,7 @@ bool Petwindow::isListening()const
 }
 
 // 窗口被隐藏（托盘菜单里的"隐藏"）：停止浮动动画，看不见的窗口没必要一直重画
-void Petwindow::hideEvent(QHideEvent* event)
+void Petwindow::hideEvent(QHideEvent*)
 {
 	m_animTimer.stop();
 }

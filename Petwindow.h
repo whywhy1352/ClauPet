@@ -19,6 +19,11 @@ public:
 	void setState(PetState state);	// 切换宠物状态，并通知 Qt 重画窗口（setter）
 	PetState state()const;			// 查询当前状态；常函数，只读不改（getter）
 	bool isListening()const;		// 是否成功监听了端口；失败说明端口被占用（可能已经有一个 ClauPet 在运行）
+	// 监听的端口号；Claude Code 的 HTTP hook 要发到这个端口
+	// 静态成员：属于"Petwindow 这个类"，而不属于某个对象，不用创建对象就能访问
+	// 类里面直接写 kPort；类外面写 Petwindow::kPort（main.cpp 的提示文字就用到了）
+	// 只在这一处定义：要改端口，只改这里（同时要修改 Claude Code 的 hooks 配置）
+	static constexpr quint16 kPort{ 52790 };
 protected:
 	// 下面 8 个都是重写 QWidget 的虚函数，由 Qt 在对应事件发生时自动调用
 	void paintEvent(QPaintEvent* event) override;		// 窗口需要重画时：按当前状态画出对应的图片
@@ -57,4 +62,11 @@ private:
 	QString m_bubbleText;							// 气泡里要显示的文字（"会话标题：工具名"）；空字符串表示不显示气泡
 	// 每个会话的标题：会话 ID → 标题。标题只在你发消息时才收得到，所以先记下来，调用工具时再拿出来用
 	std::map<QString, QString> m_sessionTitles;
+	// 构造函数拆出来的 6 个步骤，只在构造时调用一次，所以是 private
+	void setUpWindow();				// 窗口大小、无边框、置顶、不在任务栏显示、背景透明
+	void loadImages();				// 加载 5 张宠物图片
+	void restorePosition();			// 恢复上次保存的位置
+	void setUpAnimation();			// 准备浮动动画的"闹钟"和"秒表"
+	void setUpServer();				// 开始监听端口，登记处理请求的代码
+	void setUpTrayMenu();			// 创建右键菜单和托盘图标（必须在 loadImages 之后）
 };

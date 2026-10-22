@@ -19,8 +19,10 @@ int main(int argc, char* argv[])
     else
     {
         // nullptr：还没有任何窗口显示出来，弹窗没有父窗口
-        // 注意：这里的 52790 是写死的，修改 Petwindow.cpp 里的 kPort 时要同步修改
-        QMessageBox::warning(nullptr, "Error", "Cannot start: port 52790 is already in use. ClauPet may already be running (check the tray icon), or another program is using this port.");
+        // %1 是占位符，.arg() 把它替换成端口号，并且自动把数字转成文字
+        // 端口号来自 Petwindow::kPort（静态成员常量），不再写死，改端口时这里会自动跟着变
+        const QString message{ QString("Cannot start: port %1 is already in use. ClauPet may already be running (check the tray icon), or another program is using this port.").arg(Petwindow::kPort) };
+        QMessageBox::warning(nullptr, "Error", message);
         // 直接从 main 返回，不进入事件循环。在构造函数里调用 quit() 是没用的，因为那时事件循环还没开始
         // 返回值是"退出码"：0 表示正常结束，非 0 表示出了问题
         // pet 离开作用域时会自动析构，托盘图标等资源也随之清理
