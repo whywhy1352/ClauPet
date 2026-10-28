@@ -52,6 +52,7 @@ private:
 	// 每个 Claude Code 会话各自的状态：会话 ID → 状态。同时开着多个会话时，靠它避免互相覆盖
 	std::map<QString, PetState> m_sessionStates;
 	PetState combinedState()const;	// 合并所有会话的状态，返回最紧急的那个；常函数，只读不改
+	void scheduleErrorRecovery(const QString& sessionId);	// 某个会话出错后，安排一个定时器，过一会儿把它恢复为空闲
 	void activateClaudeWindow();	// 把 Claude 桌面应用的窗口切换到最前面（用 Windows API）
 	// 是否正在被拖动。这是你和宠物之间的互动状态，不是 Claude 的状态，所以不放进 PetState
 	// 由 mouseMoveEvent 设为 true，mouseReleaseEvent 改回 false；为 true 时 paintEvent 画 m_dragged

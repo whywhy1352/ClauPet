@@ -70,8 +70,7 @@ static bool tryReadBody(QTcpSocket* socket, QByteArray& body)
 		contentLength = lower.mid(valueStart, lineEnd - valueStart).trimmed().toInt();	// 截出值、去掉空格、转成整数
 	}
 	const qsizetype bodyStart{ headerEnd + 4 };	// 请求体的起点：跳过 "\r\n\r\n" 这 4 个字符
-	const qsizetype lengthIfEnough{ contentLength };	// 请求体应有的长度（就是 contentLength）
-	if (data.size() < bodyStart + lengthIfEnough)
+	if (data.size() < bodyStart + contentLength)
 	{
 		return false;	// 总长度还不够，请求体没收齐
 	}
@@ -426,6 +425,30 @@ void Petwindow::keyPressEvent(QKeyEvent* event)
 	}
 }
 
+// 出错后安排一个定时器：过 kErrorRecoverMs 毫秒，把这个会话恢复为空闲
+// 为什么需要它：出错之后 Claude Code 不会再发后续事件（Stop 不会来），不自动恢复的话，宠物会一直显示出错
+// sessionId 用 const 引用传进来：不复制，也不修改
+void Petwindow::scheduleErrorRecovery(const QString& sessionId)
+{
+	// singleShot 立刻返回，不会让程序卡住；时间到了，事件循环才执行这个 lambda
+	// [sessionId] 必须按值捕获：参数 sessionId 是引用，指向 handleHookEvent 里的局部变量，
+	// 而 lambda 是延迟执行的，那时这个函数和 handleHookEvent 都早已返回，那个局部变量已经销毁。
+	// 按值捕获会把引用所指向的字符串复制一份存进 lambda；按引用捕获则会变成悬空引用
+	// 上下文对象 this：如果窗口在这段时间里被销毁，lambda 就不会执行
+	QTimer::singleShot(kErrorRecoverMs, this, [this, sessionId]()
+		{
+			// 用 find 而不是 []：如果这个会话在等待期间已经结束（被 erase 了），
+			// [] 会把它重新插回来，变成一个永远不会被清理的"幽灵会话"
+			auto it = m_sessionStates.find(sessionId);
+			// 还要确认它仍然是出错状态：等待期间它可能已经重新开始工作，不能误改成空闲
+			if (it != m_sessionStates.end() && it->second == PetState::Error)
+			{
+				m_sessionStates[sessionId] = PetState::Idle;	// 已确认存在，这里的 [] 不会插入新元素
+			}
+			setState(combinedState());	// 重新合并所有会话的状态，刷新宠物
+		});
+}
+
 // 处理 Claude Code 发来的一个 hook 事件：
 // 1. 记录会话标题；调用工具时更新气泡文字
 // 2. 更新发出这个事件的那个会话的状态（会话结束就从记录里删掉）
@@ -471,29 +494,12 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 	else if (stateHookEvent(eventName, toolName, newState))	// 认识这个事件才更新
 	{
 		m_sessionStates[sessionId] = newState;	// [] 找不到这个会话时会自动插入，正好用来记录新会话
-		// 出错后不会再有后续事件（Stop 不会来），所以安排一个定时器，过一会儿自动恢复为空闲
 		if (newState == PetState::Error)
 		{
-			// singleShot 立刻返回，不会让程序卡住；时间到了，事件循环才执行这个 lambda
-			// [sessionId] 必须按值捕获：lambda 是延迟执行的，那时 handleHookEvent 早已返回，
-			// 局部变量 sessionId 已经销毁，按引用捕获会变成悬空引用
-			// 上下文对象 this：如果窗口在这段时间里被销毁，lambda 就不会执行
-			QTimer::singleShot(kErrorRecoverMs, this, [this, sessionId]()
-				{
-					// 用 find 而不是 []：如果这个会话在等待期间已经结束（被 erase 了），
-					// [] 会把它重新插回来，变成一个永远不会被清理的"幽灵会话"
-					auto it = m_sessionStates.find(sessionId);
-					// 还要确认它仍然是出错状态：等待期间它可能已经重新开始工作，不能误改成空闲
-					if (it != m_sessionStates.end() && it->second == PetState::Error)
-					{
-						m_sessionStates[sessionId] = PetState::Idle;	// 已确认存在，这里的 [] 不会插入新元素
-					}
-					setState(combinedState());	// 重新合并所有会话的状态，刷新宠物
-				});
+			scheduleErrorRecovery(sessionId);	// 出错：过一会儿自动恢复为空闲
 		}
 	}
 	setState(combinedState());	// 先算出合并后的状态，再通过 setState 统一修改并重画
-	qDebug() << m_bubbleText;	// 调试用：当前的气泡文字
 }
 
 // 把 Claude 桌面应用的窗口切换到最前面（左键单击宠物时调用）
