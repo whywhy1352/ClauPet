@@ -458,7 +458,7 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 {
 	const QJsonObject json{ QJsonDocument::fromJson(body).object() };		// 解析成 JSON 对象
 	const QString eventName{ json.value("hook_event_name").toString() };	// 发生了什么事
-	const QString sessionId{ json.value("session_id").toString() };		// 是哪个会话发来的
+	const QString sessionId{ json.value("session_id").toString() };			// 是哪个会话发来的
 	const QString toolName{ json.value("tool_name").toString() };			// 调用的是哪个工具（没有就是空字符串）
 	const QString sessionTitle{ json.value("session_title").toString() };	// 会话标题（实测只有 UserPromptSubmit 才带，其他事件是空字符串）
 	// ---- 气泡文字 ----
