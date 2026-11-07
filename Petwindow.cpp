@@ -46,6 +46,7 @@ static QPixmap loadPetImage(const char* path,qreal dpr)
 	const int realSize{ static_cast<int>(kPetSize * dpr) };	// 屏幕上实际需要的像素数，比如 180 × 1.75 = 315
 	QPixmap img{ QPixmap( path ).scaled(realSize, realSize, Qt::KeepAspectRatio, Qt::SmoothTransformation) };	// 加载原图，保持比例、平滑地缩小到 realSize
 	img.setDevicePixelRatio(dpr);	// 告诉 Qt 这张图已经按 dpr 倍准备好了，显示时不要再放大（否则会模糊）
+	// 注意：这只对加载时那块屏幕成立。换到缩放比例不同的屏幕后，要按新的比例重新加载（见 reloadImageIfNeeded）
 	return img;
 }
 
@@ -140,8 +141,12 @@ static bool stateHookEvent(const QString& eventName, const QString& toolName, Pe
 
 // 构造函数：程序启动时执行一次，只负责"设置"和"登记"，真正处理事件要等事件循环开始
 // 每一步的细节都放在下面对应的私有成员函数里，这里只当"目录"，一眼就能看出启动时做了哪几件事
-// 顺序要求：loadImages() 必须在 setUpTrayMenu() 之前，因为托盘图标用的是 m_idle 这张图，
-// 反过来的话，设置托盘时图片还没加载，托盘里会是一个空白图标。其他几步之间互不影响
+// 顺序要求有两条，其他几步之间互不影响：
+// 1. restorePosition() 必须在 loadImages() 之前：窗口还没显示时，devicePixelRatio() 取的是"窗口中心所在那块屏幕"的缩放比例。
+//    先把窗口移到上次的位置，加载出来的图片才和宠物真正要出现的那块屏幕匹配；反过来的话，宠物上次停在
+//    缩放比例不同的副屏上，这次一启动就会发虚（这种情况下比例没有"变化"，event() 也不会来补救）
+// 2. loadImages() 必须在 setUpTrayMenu() 之前：托盘图标用的是 m_idle 这张图，
+//    反过来的话，设置托盘时图片还没加载，托盘里会是一个空白图标
 Petwindow::Petwindow()
 {
 	setUpWindow();
@@ -152,14 +157,16 @@ Petwindow::Petwindow()
 	setUpTrayMenu();
 }
 
-// ---- 以下 6 个函数只在构造时调用一次，所以都放在 private 里 ----
+// ---- 以下 6 个函数是构造函数的步骤，都放在 private 里；除了 loadImages，都只在构造时调用一次 ----
 
 // 窗口的大小和外观：无边框、始终置顶、不在任务栏显示、背景透明
 void Petwindow::setUpWindow()
 {
 	// 窗口大小（逻辑像素）：高度上下各留出一个振幅，浮动时图片才不会被窗口边缘切掉；
 	// 顶部再留出 kBubbleHeight 给气泡。没画东西的地方是透明的，鼠标会穿透过去
-	resize(kPetSize, kPetSize + 2 * static_cast<int>(kFloatAmplitude) + kBubbleHeight);
+	// 用 setFixedSize 而不是 resize：把最小和最大尺寸都锁成这个值，窗口大小就不会被改变
+	// （实测：用 resize 时，拖到缩放比例不同的另一块屏幕上，宠物会被裁切）
+	setFixedSize(kPetSize, kPetSize + 2 * static_cast<int>(kFloatAmplitude) + kBubbleHeight);
 	// 无边框 + 始终置顶 + 工具窗口（不在任务栏显示按钮，改用托盘图标）；用 | 组合三个标志位
 	setWindowFlags(Qt::FramelessWindowHint | Qt::WindowStaysOnTopHint | Qt::Tool);
 	setAttribute(Qt::WA_TranslucentBackground);	// 背景透明：没画东西的地方完全透明，点击会穿透到后面的窗口
@@ -181,7 +188,8 @@ void Petwindow::setUpAnimation()
 		});
 }
 
-// 加载 5 张宠物图片，存进成员变量。只在这里加载一次，paintEvent 里直接用
+// 加载 5 张宠物图片，存进成员变量，paintEvent 里直接用
+// 启动时加载一次；之后屏幕的缩放比例变了（见 reloadImageIfNeeded），或者点了菜单里的「reload」，会重新加载
 // 它是成员函数，因为要给 m_idle 等私有成员赋值；真正加载一张图的 loadPetImage 是普通函数，
 // 因为它不需要访问任何成员，只要"路径"和"缩放比例"就够了
 void Petwindow::loadImages()
@@ -264,7 +272,15 @@ void Petwindow::setUpTrayMenu()
 				toggleAction->setText("Hide pet");
 			}
 		});
-	// 菜单项 2：退出。qApp 指向 main 里唯一的 QApplication 对象，quit() 让 exec() 返回、程序结束
+	// 菜单项 2：重新加载图片。正常情况下，缩放比例变了会自动重新加载（见 event()），
+	// 这一项是万一自动处理失灵时的后备，所以不比较比例，直接强制加载
+	QAction* reloadAction{ m_menu.addAction("reload") };
+	connect(reloadAction, &QAction::triggered, this, [this]()
+		{
+			loadImages();
+			update();	// 换了图片，请求重画
+		});
+	// 菜单项 3：退出。qApp 指向 main 里唯一的 QApplication 对象，quit() 让 exec() 返回、程序结束
 	QAction* quitAction{ m_menu.addAction("quit") };
 	connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
 
@@ -273,6 +289,37 @@ void Petwindow::setUpTrayMenu()
 	m_tray.setToolTip("ClauPet");	// 鼠标悬停时显示的文字
 	m_tray.setContextMenu(&m_menu);	// 右键托盘图标时弹出这个菜单（托盘会记住菜单的地址）
 	m_tray.show();
+}
+
+// 屏幕的缩放比例和图片准备时用的不一样了，就按新的比例重新加载图片
+// （比如拖到了缩放比例不同的另一块屏幕：图片还是按旧比例准备的，Qt 只能在画的时候拉伸，就会发虚）
+// 有两处会调用它：event()（比例变了，并且没在拖动）和 mouseReleaseEvent()（补上拖动中跳过的那一次）
+// 先比较再加载：这个事件每次可能会送来两次，图片也不小，没必要重复加载；
+// 拖到另一块屏幕、没松手又拖回来时，松开时比例没变，也不会白白加载
+void Petwindow::reloadImageIfNeeded()
+{
+	// 5 张图总是一起加载的，看 m_idle 一张就够了
+	// devicePixelRatio() 在 Qt 6 里返回小数，和 loadImages 里的 devicePixelRatioF() 是同一个值（带 F 的是 Qt 5 留下来的写法）
+	if (m_idle.devicePixelRatio() != devicePixelRatio())
+	{
+		loadImages();
+		update();	// 换了图片，请求重画
+	}
+}
+
+// 所有事件的总入口：Qt 收到任何事件都先调用它，再由 QWidget::event 分发给 paintEvent、mousePressEvent 等
+// 重写它，是因为"缩放比例变了"（QEvent::DevicePixelRatioChange，Qt 6.6 起才有）没有专门的处理函数，changeEvent 也收不到
+// 什么时候比例会变：拖到缩放比例不同的另一块屏幕、在 Windows 设置里改了缩放、拔掉了宠物所在的显示器……
+bool Petwindow::event(QEvent* event)
+{
+	// 拖动中先不加载：5 张大图解码要一会儿，拖到一半会卡一下。松开时 mouseReleaseEvent 会补上
+	if (event->type() == QEvent::DevicePixelRatioChange && !m_dragging)
+	{
+		reloadImageIfNeeded();
+	}
+	// 必须交回给基类（QWidget:: 表示调用基类的版本）：其他事件、包括这个事件本身，都要靠它继续处理，
+	// 不交回的话，宠物就不会重画，也不会响应鼠标了
+	return QWidget::event(event);
 }
 
 // 重画窗口：Qt 在窗口需要重画时自动调用（第一次显示、调用 update() 之后等）
@@ -528,7 +575,7 @@ void Petwindow::activateClaudeWindow()
 
 // 鼠标松开：这次左键操作是"点击"还是"拖动"，已经在 mouseMoveEvent 里判断过了，这里直接看 m_dragging
 // （同一件事只在一个地方判断，以后调整规则只需要改一处）
-// 拖动：拖动结束，换回原来的图，并把当前位置保存下来，下次启动时恢复
+// 拖动：拖动结束，换回原来的图，并把当前位置保存下来，下次启动时恢复；拖动中换了屏幕的话，还要补上重新加载图片
 // 点击：切换到 Claude 窗口
 // 选在这里保存，而不是在 mouseMoveEvent 里：拖一次只写一次，不会频繁写注册表；单纯点击也不会写
 void Petwindow::mouseReleaseEvent(QMouseEvent* event)
@@ -538,6 +585,7 @@ void Petwindow::mouseReleaseEvent(QMouseEvent* event)
 		if (m_dragging)	// 拖动
 		{
 			m_dragging = false;
+			reloadImageIfNeeded();	// 拖动中换了屏幕的话，event() 跳过了重新加载，这里补上
 			update();	// 请求重画，换回 Claude 当前状态对应的图；不请求的话会一直保持被拎起来的样子
 			QSettings settings{ kSettingsName, kSettingsName };	// 和构造函数里读取时用同样的名字
 			settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）

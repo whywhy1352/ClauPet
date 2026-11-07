@@ -25,7 +25,7 @@ public:
 	// 只在这一处定义：要改端口，只改这里（同时要修改 Claude Code 的 hooks 配置）
 	static constexpr quint16 kPort{ 52790 };
 protected:
-	// 下面 8 个都是重写 QWidget 的虚函数，由 Qt 在对应事件发生时自动调用
+	// 下面 9 个都是重写 QWidget 的虚函数，由 Qt 在对应事件发生时自动调用
 	void paintEvent(QPaintEvent* event) override;		// 窗口需要重画时：按当前状态画出对应的图片
 	void mousePressEvent(QMouseEvent* event) override;	// 鼠标按下时：左键记录拖动起点，右键弹出菜单
 	void mouseMoveEvent(QMouseEvent* event) override;	// 鼠标移动时：按住左键就拖动窗口
@@ -34,6 +34,7 @@ protected:
 	void hideEvent(QHideEvent* event) override;			// 窗口隐藏时：停止浮动动画
 	void enterEvent(QEnterEvent* event) override;		// 鼠标移到宠物身上时：开始浮动
 	void leaveEvent(QEvent* event) override;			// 鼠标从宠物身上移开时：停止浮动
+	bool event(QEvent* event) override;					// 所有事件的总入口：这里只拦截"缩放比例变了"，重新加载图片，其他事件交回 QWidget 处理
 private:
 	QPoint m_dragOffset;				// 左键按下时，鼠标在窗口里的位置；拖动时用它保持相对位置不变
 	PetState m_state{ PetState::Idle };	// 当前状态，程序启动时是空闲
@@ -53,6 +54,7 @@ private:
 	std::map<QString, PetState> m_sessionStates;
 	PetState combinedState()const;	// 合并所有会话的状态，返回最紧急的那个；常函数，只读不改
 	void scheduleErrorRecovery(const QString& sessionId);	// 某个会话出错后，安排一个定时器，过一会儿把它恢复为空闲
+	void reloadImageIfNeeded();		// 屏幕的缩放比例和图片准备时的不一样了，就按新的比例重新加载图片
 	void activateClaudeWindow();	// 把 Claude 桌面应用的窗口切换到最前面（用 Windows API）
 	// 是否正在被拖动。这是你和宠物之间的互动状态，不是 Claude 的状态，所以不放进 PetState
 	// 由 mouseMoveEvent 设为 true，mouseReleaseEvent 改回 false；为 true 时 paintEvent 画 m_dragged
@@ -63,9 +65,9 @@ private:
 	QString m_bubbleText;							// 气泡里要显示的文字（"会话标题：工具名"）；空字符串表示不显示气泡
 	// 每个会话的标题：会话 ID → 标题。标题只在你发消息时才收得到，所以先记下来，调用工具时再拿出来用
 	std::map<QString, QString> m_sessionTitles;
-	// 构造函数拆出来的 6 个步骤，只在构造时调用一次，所以是 private
+	// 构造函数拆出来的 6 个步骤，都是 private；除了 loadImages（缩放比例变了时还会再调用），都只在构造时调用一次
 	void setUpWindow();				// 窗口大小、无边框、置顶、不在任务栏显示、背景透明
-	void loadImages();				// 加载 5 张宠物图片
+	void loadImages();				// 按当前屏幕的缩放比例，加载 5 张宠物图片
 	void restorePosition();			// 恢复上次保存的位置
 	void setUpAnimation();			// 准备浮动动画的"闹钟"和"秒表"
 	void setUpServer();				// 开始监听端口，登记处理请求的代码
