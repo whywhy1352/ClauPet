@@ -10,4 +10,9 @@ promo/*.log
 promo/stills*/
 enc_temp_folder/
 架构设计.md
+# anim/ 只提交脚本和说明；图片、视频这些中间产物都不提交（成品放 assets/pet/）
+anim/**/*.png
+anim/**/*.mp4
+anim/**/*.webp
+anim/.venv/
 
