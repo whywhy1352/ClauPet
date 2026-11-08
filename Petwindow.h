@@ -16,7 +16,7 @@
 class Petwindow : public QWidget
 {
 public:
-	Petwindow();					// 构造函数：设置窗口外观、开始播放动画、恢复上次的位置、开始监听端口、创建菜单和托盘图标
+	Petwindow();					// 构造函数：设置窗口外观、恢复上次的位置、开始播放动画、开始监听端口、创建菜单和托盘图标
 	void setState(PetState state);	// 切换宠物状态，并通知 Qt 重画窗口（setter）
 	PetState state()const;			// 查询当前状态；常函数，只读不改（getter）
 	bool isListening()const;		// 是否成功监听了端口；失败说明端口被占用（可能已经有一个 ClauPet 在运行）
@@ -51,10 +51,12 @@ private:
 	std::map<QString, PetState> m_sessionStates;
 	PetState combinedState()const;	// 合并所有会话的状态，返回最紧急的那个；常函数，只读不改
 	void scheduleErrorRecovery(const QString& sessionId);	// 某个会话出错后，安排一个定时器，过一会儿把它恢复为空闲
-	void reloadMovieIfNeeded();		// 屏幕的缩放比例和启动时的不一样了，就调用 refreshMovie，按当前比例重新设置解码尺寸
+	void reloadMovieIfNeeded();		// 屏幕的缩放比例和当前解码尺寸所用的比例不一样了，就调用 refreshMovie，按当前比例重新设置解码尺寸
 	void activateClaudeWindow();	// 把 Claude 桌面应用的窗口切换到最前面（用 Windows API）
 	void refreshMovie();			// 按当前比例设置解码尺寸；当前状态（或是否在拖动）对应的动画文件变了，就换文件从头播放
-	qreal m_firstDpr{ 1 };			// 启动时屏幕的缩放比例，reloadMovieIfNeeded 用它判断比例有没有变（启动后不再更新）
+	// 当前的解码尺寸是按哪个缩放比例算出来的；reloadMovieIfNeeded 拿它和屏幕现在的比例比较，判断要不要重新设置
+	// 只在调用 setScaledSize 的两个地方（setUpAnimation、refreshMovie）紧跟着更新，所以它和解码尺寸永远一致
+	qreal m_savedDpr{ 1 };
 	// 是否正在被拖动。这是你和宠物之间的互动状态，不是 Claude 的状态，所以不放进 PetState
 	// 由 mouseMoveEvent 设为 true，mouseReleaseEvent 改回 false；为 true 时 refreshMovie 换成被拎起来的动画
 	bool m_dragging{ false };
@@ -67,7 +69,7 @@ private:
 	// 构造函数拆出来的 5 个步骤，都是 private，都只在构造时调用一次
 	void setUpWindow();				// 窗口大小、无边框、置顶、不在任务栏显示、背景透明
 	void restorePosition();			// 恢复上次保存的位置
-	void setUpAnimation();			// 准备浮动动画的"闹钟"和"秒表"，并开始播放宠物动画
+	void setUpAnimation();			// 准备浮动动画的"闹钟"和"秒表"，并开始播放宠物动画（必须在 restorePosition 之后）
 	void setUpServer();				// 开始监听端口，登记处理请求的代码
 	void setUpTrayMenu();			// 创建右键菜单和托盘图标
 };

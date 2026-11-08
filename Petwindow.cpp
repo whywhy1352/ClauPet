@@ -132,15 +132,15 @@ static bool stateHookEvent(const QString& eventName, const QString& toolName, Pe
 
 // 构造函数：程序启动时执行一次，只负责"设置"和"登记"，真正处理事件要等事件循环开始
 // 每一步的细节都放在下面对应的私有成员函数里，这里只当"目录"，一眼就能看出启动时做了哪几件事
-// 关于顺序：窗口还没显示时，devicePixelRatio() 取的是"窗口中心所在那块屏幕"的缩放比例。
-// 动画的解码尺寸是在 setUpAnimation() 里按这个比例设置的，而它目前排在 restorePosition() 之前，
-// 所以取到的是"移到上次位置之前"那块屏幕的比例。宠物上次停在缩放比例不同的副屏上时，启动后会先按另一块屏幕的比例解码，
-// 要等到状态改变、拖动结束或点了「reload」，refreshMovie 才会按当前屏幕重新设置（这种情况下比例没有"变化"，event() 不会来补救）
+// 顺序要求：restorePosition() 必须在 setUpAnimation() 之前。
+// 窗口还没显示时，devicePixelRatio() 取的是"窗口中心所在那块屏幕"的缩放比例，而 setUpAnimation() 要按它设置动画的解码尺寸。
+// 先把窗口移到上次的位置，取到的才是宠物真正要出现的那块屏幕的比例；反过来的话，宠物上次停在缩放比例不同的副屏上时，
+// 第一帧会按另一块屏幕的比例解码（实测：会先画出一帧 315 像素的，之后才变成副屏需要的 270）
 Petwindow::Petwindow()
 {
 	setUpWindow();
-	setUpAnimation();
 	restorePosition();
+	setUpAnimation();
 	setUpServer();
 	setUpTrayMenu();
 }
@@ -178,9 +178,10 @@ void Petwindow::setUpAnimation()
 		});
 	m_movie.setFileName(":/assets/pet/idle.webp");	// 启动时是空闲状态
 	// 解码尺寸 = 逻辑尺寸 × 缩放比例，比如 180 × 1.75 = 315：帧的像素和屏幕上的物理像素一样多，显示时 1:1，最清晰
-	// 注意 kPetSize * devicePixelRatio() 是小数，传给 QSize 时会被直接截断成整数
-	m_movie.setScaledSize(QSize(kPetSize * devicePixelRatio(), kPetSize * devicePixelRatio()));
-	m_firstDpr = devicePixelRatio();	// 记下启动时的比例，reloadMovieIfNeeded 用它判断比例有没有变
+	// kPetSize * devicePixelRatio() 是小数，用 qRound 四舍五入成最接近的整数再传给 QSize：
+	// 直接转成 int 会丢掉小数部分，浮点误差让 206.99999 变成 206（Windows 自定义缩放比例时会遇到）
+	m_movie.setScaledSize(QSize(qRound(kPetSize * devicePixelRatio()), qRound(kPetSize * devicePixelRatio())));
+	m_savedDpr = devicePixelRatio();	// 记下这个解码尺寸用的比例，reloadMovieIfNeeded 用它判断比例有没有变
 	// 每解码出一帧，就请 Qt 重画一次，把新的一帧画上去
 	// 必须在 start() 之前连接：start() 会当场解码第 0 帧并发出 frameChanged，晚一步连接就收不到这一次
 	connect(&m_movie, &QMovie::frameChanged, this, [this]()
@@ -191,13 +192,15 @@ void Petwindow::setUpAnimation()
 }
 
 // 刷新宠物动画：状态改变、开始/结束拖动、缩放比例变了、点了「reload」时调用
-// 1. 先按当前屏幕的比例设置解码尺寸。它只影响之后新解码的帧，所以文件没换时，要到下一帧才变成新尺寸
+// 1. 先按当前屏幕的比例设置解码尺寸，并记下用的是哪个比例（m_savedDpr）。
+//    它只影响之后新解码的帧，所以文件没换时，要到下一帧才变成新尺寸
 //    （没开 CacheAll 才是这样；开了的话，已经缓存的帧不会按新尺寸重新解码）
 // 2. 再按"是否在拖动"和当前状态选出动画文件；setScaledSize 设的尺寸在换文件之后仍然保留
 // 3. 文件名和现在播放的一样就不换：同一个状态重复收到事件时，动画不会被打断、从头播放
 void Petwindow::refreshMovie()
 {
-	m_movie.setScaledSize(QSize(kPetSize * devicePixelRatio(), kPetSize * devicePixelRatio()));
+	m_movie.setScaledSize(QSize(qRound(kPetSize * devicePixelRatio()), qRound(kPetSize * devicePixelRatio())));
+	m_savedDpr = devicePixelRatio();	// 紧跟着 setScaledSize 更新，保证它和解码尺寸一致
 	QString fileName{};
 	if (m_dragging)
 	{
@@ -318,13 +321,13 @@ void Petwindow::setUpTrayMenu()
 	m_tray.show();
 }
 
-// 屏幕的缩放比例和启动时的不一样了，就调用 refreshMovie，按当前比例重新设置动画的解码尺寸
+// 屏幕的缩放比例和当前解码尺寸所用的比例（m_savedDpr）不一样了，就调用 refreshMovie，按当前比例重新设置动画的解码尺寸
 // （比如拖到了缩放比例不同的另一块屏幕：帧还是按旧比例解码的，像素数和屏幕对不上，画的时候要缩放，就会发虚）
 // 有两处会调用它：event()（比例变了，并且没在拖动）和 mouseReleaseEvent()（拖动结束时）
-// 比较的对象是启动时记下的 m_firstDpr，它之后不会更新：比例变回启动时的值时，这里会判断成"没变"
+// 先比较再处理：这个事件每次可能会送来两次，比例没变就什么都不做
 void Petwindow::reloadMovieIfNeeded()
 {
-	if (m_firstDpr != devicePixelRatio())
+	if (m_savedDpr != devicePixelRatio())
 	{
 		refreshMovie();
 		update();	// 请求重画
@@ -364,6 +367,10 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 	// 必须先转成小数再除：两个整数相除会丢掉小数，315 / 180 会变成 1
 	qreal dpr{ pixmap.width() / static_cast<qreal>(kPetSize) };
 	pixmap.setDevicePixelRatio(dpr);
+	if (!qFuzzyCompare(dpr, devicePixelRatio()))
+	{
+		painter.setRenderHint(QPainter::SmoothPixmapTransform);
+	}
 	// 浮动的位移：只有闹钟在响（鼠标悬停中）时才计算，否则为 0，宠物静止在中间
 	qreal offset{};
 	if (m_animTimer.isActive())
@@ -606,7 +613,7 @@ void Petwindow::mouseReleaseEvent(QMouseEvent* event)
 		{
 			m_dragging = false;
 			refreshMovie();			// 换回 Claude 当前状态的动画，并按当前屏幕的比例设置解码尺寸
-			reloadMovieIfNeeded();	// 比例和启动时不同时会再调用一次 refreshMovie；上一行已经设置过，这一次不会再改变什么
+			reloadMovieIfNeeded();	// 上一行的 refreshMovie 刚更新过 m_savedDpr，这里一定判断成"没变"，什么都不会做
 			update();	// 请求重画，换回 Claude 当前状态对应的动画；不请求的话会一直保持被拎起来的样子
 			QSettings settings{ kSettingsName, kSettingsName };	// 和构造函数里读取时用同样的名字
 			settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）
