@@ -11,10 +11,12 @@
 #include<QIcon>			// 托盘图标用的图标类
 #include<QSettings>		// 保存配置（宠物的位置）；在 Windows 上存在注册表里，程序关掉后数据还在
 #include<algorithm>		// std::max_element：在多个会话里找出最紧急的状态
-#include<QTimer>			// QTimer::singleShot：过一段时间后执行一次（出错状态自动恢复）
+#include<QTimer>		// QTimer::singleShot：过一段时间后执行一次（出错状态自动恢复）
 #include<cmath>			// std::sin：计算浮动动画的位移
 #include<QFont>			// 气泡文字的字体
 #include<QFontMetrics>	// "字体量尺"：算出一段文字的宽度，以及把太长的文字截断成"…"
+#include<QMovie>		// QMovie：播放宠物动画（头文件里已经包含，这里写出来，一眼就能看出本文件用到了它）
+
 // Windows API：FindWindowW、SetForegroundWindow 等，用来把 Claude 窗口切换到前台
 // NOMINMAX 必须写在 #include 之前：否则 windows.h 会定义名叫 min、max 的宏，弄坏 std::min / std::max
 // 只在这个 .cpp 里包含，不放进头文件，免得包含 Petwindow.h 的文件都被这些宏影响
@@ -36,19 +38,6 @@ constexpr double kPi{ 3.14159265358979 };	// 圆周率
 constexpr int kBubbleHeight{ 30 };		// 宠物头顶留给气泡的高度（逻辑像素）；宠物整体往下挪这么多
 constexpr int kBubbleFontSize{ 9 };		// 气泡文字的字号（磅）
 constexpr int kBubblePadding{ 8 };		// 文字左右两边的留白（逻辑像素）
-
-// 加载一张宠物图片，并缩放到适合当前屏幕的大小
-// path：资源路径，比如 ":/assets/pet/idle.png"
-// dpr：屏幕缩放比例（device pixel ratio），175% 缩放时是 1.75
-// static：这个函数只在本 .cpp 文件里可见
-static QPixmap loadPetImage(const char* path,qreal dpr)
-{
-	const int realSize{ static_cast<int>(kPetSize * dpr) };	// 屏幕上实际需要的像素数，比如 180 × 1.75 = 315
-	QPixmap img{ QPixmap( path ).scaled(realSize, realSize, Qt::KeepAspectRatio, Qt::SmoothTransformation) };	// 加载原图，保持比例、平滑地缩小到 realSize
-	img.setDevicePixelRatio(dpr);	// 告诉 Qt 这张图已经按 dpr 倍准备好了，显示时不要再放大（否则会模糊）
-	// 注意：这只对加载时那块屏幕成立。换到缩放比例不同的屏幕后，要按新的比例重新加载（见 reloadImageIfNeeded）
-	return img;
-}
 
 // 判断一个 HTTP 请求是否已经完整收到
 // 收齐了：取走数据，把请求体存进 body（输出参数），返回 true
@@ -82,6 +71,8 @@ static bool tryReadBody(QTcpSocket* socket, QByteArray& body)
 		return true;
 	}
 }
+
+
 
 // 状态的"紧急程度"：数字越大越紧急，多个会话合并时显示最紧急的那个
 // 不直接比较枚举值：enum class 不能当数字比较，而且声明顺序也不代表优先级
@@ -141,23 +132,20 @@ static bool stateHookEvent(const QString& eventName, const QString& toolName, Pe
 
 // 构造函数：程序启动时执行一次，只负责"设置"和"登记"，真正处理事件要等事件循环开始
 // 每一步的细节都放在下面对应的私有成员函数里，这里只当"目录"，一眼就能看出启动时做了哪几件事
-// 顺序要求有两条，其他几步之间互不影响：
-// 1. restorePosition() 必须在 loadImages() 之前：窗口还没显示时，devicePixelRatio() 取的是"窗口中心所在那块屏幕"的缩放比例。
-//    先把窗口移到上次的位置，加载出来的图片才和宠物真正要出现的那块屏幕匹配；反过来的话，宠物上次停在
-//    缩放比例不同的副屏上，这次一启动就会发虚（这种情况下比例没有"变化"，event() 也不会来补救）
-// 2. loadImages() 必须在 setUpTrayMenu() 之前：托盘图标用的是 m_idle 这张图，
-//    反过来的话，设置托盘时图片还没加载，托盘里会是一个空白图标
+// 关于顺序：窗口还没显示时，devicePixelRatio() 取的是"窗口中心所在那块屏幕"的缩放比例。
+// 动画的解码尺寸是在 setUpAnimation() 里按这个比例设置的，而它目前排在 restorePosition() 之前，
+// 所以取到的是"移到上次位置之前"那块屏幕的比例。宠物上次停在缩放比例不同的副屏上时，启动后会先按另一块屏幕的比例解码，
+// 要等到状态改变、拖动结束或点了「reload」，refreshMovie 才会按当前屏幕重新设置（这种情况下比例没有"变化"，event() 不会来补救）
 Petwindow::Petwindow()
 {
 	setUpWindow();
 	setUpAnimation();
 	restorePosition();
-	loadImages();
 	setUpServer();
 	setUpTrayMenu();
 }
 
-// ---- 以下 6 个函数是构造函数的步骤，都放在 private 里；除了 loadImages，都只在构造时调用一次 ----
+// ---- 以下 5 个函数是构造函数的步骤，都放在 private 里，都只在构造时调用一次 ----
 
 // 窗口的大小和外观：无边框、始终置顶、不在任务栏显示、背景透明
 void Petwindow::setUpWindow()
@@ -172,7 +160,9 @@ void Petwindow::setUpWindow()
 	setAttribute(Qt::WA_TranslucentBackground);	// 背景透明：没画东西的地方完全透明，点击会穿透到后面的窗口
 }
 
-// 浮动动画的准备：设置好"闹钟"和"秒表"，但不启动闹钟（鼠标悬停时才开始浮动）
+// 动画的准备：
+// 1. 浮动动画：设置好"闹钟"和"秒表"，但不启动闹钟（鼠标悬停时才开始浮动）
+// 2. 宠物动画（m_movie）：按当前屏幕的比例设置解码尺寸，从空闲状态开始播放
 void Petwindow::setUpAnimation()
 {
 	// m_animTimer 是"闹钟"：只负责"什么时候重画"。这里只设置间隔，不启动，平时不浮动（enterEvent 里才启动）
@@ -186,22 +176,58 @@ void Petwindow::setUpAnimation()
 		{
 			update();
 		});
+	m_movie.setFileName(":/assets/pet/idle.webp");	// 启动时是空闲状态
+	// 解码尺寸 = 逻辑尺寸 × 缩放比例，比如 180 × 1.75 = 315：帧的像素和屏幕上的物理像素一样多，显示时 1:1，最清晰
+	// 注意 kPetSize * devicePixelRatio() 是小数，传给 QSize 时会被直接截断成整数
+	m_movie.setScaledSize(QSize(kPetSize * devicePixelRatio(), kPetSize * devicePixelRatio()));
+	m_firstDpr = devicePixelRatio();	// 记下启动时的比例，reloadMovieIfNeeded 用它判断比例有没有变
+	// 每解码出一帧，就请 Qt 重画一次，把新的一帧画上去
+	// 必须在 start() 之前连接：start() 会当场解码第 0 帧并发出 frameChanged，晚一步连接就收不到这一次
+	connect(&m_movie, &QMovie::frameChanged, this, [this]()
+		{
+			update();
+		});
+	m_movie.start();
 }
 
-// 加载 5 张宠物图片，存进成员变量，paintEvent 里直接用
-// 启动时加载一次；之后屏幕的缩放比例变了（见 reloadImageIfNeeded），或者点了菜单里的「reload」，会重新加载
-// 它是成员函数，因为要给 m_idle 等私有成员赋值；真正加载一张图的 loadPetImage 是普通函数，
-// 因为它不需要访问任何成员，只要"路径"和"缩放比例"就够了
-void Petwindow::loadImages()
+// 刷新宠物动画：状态改变、开始/结束拖动、缩放比例变了、点了「reload」时调用
+// 1. 先按当前屏幕的比例设置解码尺寸。它只影响之后新解码的帧，所以文件没换时，要到下一帧才变成新尺寸
+//    （没开 CacheAll 才是这样；开了的话，已经缓存的帧不会按新尺寸重新解码）
+// 2. 再按"是否在拖动"和当前状态选出动画文件；setScaledSize 设的尺寸在换文件之后仍然保留
+// 3. 文件名和现在播放的一样就不换：同一个状态重复收到事件时，动画不会被打断、从头播放
+void Petwindow::refreshMovie()
 {
-	// 当前屏幕的缩放比例（继承自 QWidget）。原来是构造函数里的局部变量，
-	// 拆分之后别的函数看不到它，所以由要用它的这个函数自己算
-	qreal dpr{ devicePixelRatioF() };
-	m_idle = loadPetImage(":/assets/pet/idle.png", dpr);
-	m_working = loadPetImage(":/assets/pet/working.png", dpr);
-	m_waiting = loadPetImage(":/assets/pet/waiting.png", dpr);
-	m_error = loadPetImage(":/assets/pet/error.png", dpr);
-	m_dragged = loadPetImage(":/assets/pet/dragging.png", dpr);	// 被拖动时"被拎起来"的图片（不属于任何 Claude 状态）
+	m_movie.setScaledSize(QSize(kPetSize * devicePixelRatio(), kPetSize * devicePixelRatio()));
+	QString fileName{};
+	if (m_dragging)
+	{
+		fileName = ":/assets/pet/dragging.webp";
+	}
+	else
+	{
+		switch (m_state)
+		{
+		case PetState::Idle:
+			fileName = ":/assets/pet/idle.webp";
+			break;
+		case PetState::Working:
+			fileName = ":/assets/pet/working.webp";
+			break;
+		case PetState::NeedsInput:
+			fileName = ":/assets/pet/waiting.webp";
+			break;
+		case PetState::Error:
+			fileName = ":/assets/pet/error.webp";
+			break;
+		}
+	}
+	if (fileName != m_movie.fileName())
+	{
+		// 先 stop() 再换文件：播放中直接换，QMovie 可能卡在"状态是 Running、定时器却停了"，之后 start() 也救不回来
+		m_movie.stop();
+		m_movie.setFileName(fileName);
+		m_movie.start();	// 从第 0 帧开始，当场解码并发出 frameChanged，请求重画
+	}
 }
 
 // 恢复上次保存的位置（位置在 mouseReleaseEvent 里，拖动结束时保存）
@@ -253,9 +279,9 @@ void Petwindow::setUpServer()
 }
 
 // 创建右键菜单（托盘图标和宠物本身共用同一个菜单）和托盘图标
-// 必须在 loadImages() 之后调用：托盘图标用的是 m_idle
 void Petwindow::setUpTrayMenu()
 {
+	QPixmap icon{ ":/assets/pet/idle.png" };	// 托盘图标用空闲状态的静态图；托盘会按自己需要的尺寸缩小，不用管缩放比例
 	// 菜单项 1：隐藏 / 显示宠物。addAction 返回指向新菜单项的指针
 	QAction* toggleAction{ m_menu.addAction("Hide pet") };
 	// 点击时执行；[this]：要调用 isVisible/hide/show，[toggleAction]：要修改这一项的文字
@@ -269,41 +295,39 @@ void Petwindow::setUpTrayMenu()
 			else				// 宠物现在隐藏 → 显示它
 			{
 				show();
+				m_movie.start();	// hideEvent 里停掉了宠物动画，显示时要重新开始播放（从第 0 帧开始）
 				toggleAction->setText("Hide pet");
 			}
 		});
-	// 菜单项 2：重新加载图片。正常情况下，缩放比例变了会自动重新加载（见 event()），
-	// 这一项是万一自动处理失灵时的后备，所以不比较比例，直接强制加载
+	// 菜单项 2：按当前屏幕的比例重新设置动画的解码尺寸。正常情况下，缩放比例变了会自动处理（见 event()），
+	// 这一项是万一自动处理失灵时的后备，所以不比较比例，直接调用 refreshMovie
 	QAction* reloadAction{ m_menu.addAction("reload") };
 	connect(reloadAction, &QAction::triggered, this, [this]()
 		{
-			loadImages();
-			update();	// 换了图片，请求重画
+			refreshMovie();
+			update();	// 请求重画
 		});
 	// 菜单项 3：退出。qApp 指向 main 里唯一的 QApplication 对象，quit() 让 exec() 返回、程序结束
 	QAction* quitAction{ m_menu.addAction("quit") };
 	connect(quitAction, &QAction::triggered, qApp, &QApplication::quit);
 
 	// ---- 托盘图标（任务栏右下角）----
-	m_tray.setIcon(QIcon(m_idle));	// 用空闲状态的图片当图标
+	m_tray.setIcon(QIcon(icon));	// 用上面加载的空闲状态图片当图标
 	m_tray.setToolTip("ClauPet");	// 鼠标悬停时显示的文字
 	m_tray.setContextMenu(&m_menu);	// 右键托盘图标时弹出这个菜单（托盘会记住菜单的地址）
 	m_tray.show();
 }
 
-// 屏幕的缩放比例和图片准备时用的不一样了，就按新的比例重新加载图片
-// （比如拖到了缩放比例不同的另一块屏幕：图片还是按旧比例准备的，Qt 只能在画的时候拉伸，就会发虚）
-// 有两处会调用它：event()（比例变了，并且没在拖动）和 mouseReleaseEvent()（补上拖动中跳过的那一次）
-// 先比较再加载：这个事件每次可能会送来两次，图片也不小，没必要重复加载；
-// 拖到另一块屏幕、没松手又拖回来时，松开时比例没变，也不会白白加载
-void Petwindow::reloadImageIfNeeded()
+// 屏幕的缩放比例和启动时的不一样了，就调用 refreshMovie，按当前比例重新设置动画的解码尺寸
+// （比如拖到了缩放比例不同的另一块屏幕：帧还是按旧比例解码的，像素数和屏幕对不上，画的时候要缩放，就会发虚）
+// 有两处会调用它：event()（比例变了，并且没在拖动）和 mouseReleaseEvent()（拖动结束时）
+// 比较的对象是启动时记下的 m_firstDpr，它之后不会更新：比例变回启动时的值时，这里会判断成"没变"
+void Petwindow::reloadMovieIfNeeded()
 {
-	// 5 张图总是一起加载的，看 m_idle 一张就够了
-	// devicePixelRatio() 在 Qt 6 里返回小数，和 loadImages 里的 devicePixelRatioF() 是同一个值（带 F 的是 Qt 5 留下来的写法）
-	if (m_idle.devicePixelRatio() != devicePixelRatio())
+	if (m_firstDpr != devicePixelRatio())
 	{
-		loadImages();
-		update();	// 换了图片，请求重画
+		refreshMovie();
+		update();	// 请求重画
 	}
 }
 
@@ -312,10 +336,11 @@ void Petwindow::reloadImageIfNeeded()
 // 什么时候比例会变：拖到缩放比例不同的另一块屏幕、在 Windows 设置里改了缩放、拔掉了宠物所在的显示器……
 bool Petwindow::event(QEvent* event)
 {
-	// 拖动中先不加载：5 张大图解码要一会儿，拖到一半会卡一下。松开时 mouseReleaseEvent 会补上
+	// 拖动中先不处理：拖过屏幕交界时，窗口可能在两块屏幕之间来回跳，这个事件会连续来好几次。
+	// 拖动中显示的大小不会错（paintEvent 按帧的实际宽度算 dpr），松开时 mouseReleaseEvent 会调用 refreshMovie 补上
 	if (event->type() == QEvent::DevicePixelRatioChange && !m_dragging)
 	{
-		reloadImageIfNeeded();
+		reloadMovieIfNeeded();
 	}
 	// 必须交回给基类（QWidget:: 表示调用基类的版本）：其他事件、包括这个事件本身，都要靠它继续处理，
 	// 不交回的话，宠物就不会重画，也不会响应鼠标了
@@ -323,12 +348,22 @@ bool Petwindow::event(QEvent* event)
 }
 
 // 重画窗口：Qt 在窗口需要重画时自动调用（第一次显示、调用 update() 之后等）
-// 这里要尽量轻：只选一张已经加载好的图，画上去
+// 这里要尽量轻：只取动画当前这一帧，画上去（缩放已经在解码时做好了，见 setScaledSize）
 void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表示这个参数用不到
 {
 	QPainter painter(this);	// 创建画笔，画在"我自己"这个窗口上；函数结束时析构，自动结束绘制
 	painter.setRenderHint(QPainter::Antialiasing);	// 抗锯齿：让气泡的圆角边缘平滑（贴图片用不到它）
-	const QPixmap* pixmap{ &m_idle };	// 指向这次要画的图片；常量指针：可以改指向，不能通过它改图片
+	// 当前帧的副本：QPixmap 是隐式共享的，拷贝和改 dpr 都不会复制像素（实测约 5 微秒）
+	QPixmap pixmap{ m_movie.currentPixmap() };
+	if (pixmap.isNull())	// 第一帧还没解码出来：宽度是 0，算出来的 dpr 也会是 0，不能用
+	{
+		return;
+	}
+	// 给这一帧贴上 dpr 标签，告诉 Qt 它该显示多大：逻辑尺寸 = 像素 ÷ dpr
+	// 按"这一帧实际有多少像素"来算，而不是按屏幕：不管帧是按哪块屏幕的比例解码的，显示出来都是 kPetSize 逻辑像素
+	// 必须先转成小数再除：两个整数相除会丢掉小数，315 / 180 会变成 1
+	qreal dpr{ pixmap.width() / static_cast<qreal>(kPetSize) };
+	pixmap.setDevicePixelRatio(dpr);
 	// 浮动的位移：只有闹钟在响（鼠标悬停中）时才计算，否则为 0，宠物静止在中间
 	qreal offset{};
 	if (m_animTimer.isActive())
@@ -338,41 +373,18 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 		const qreal timeElapsed{ m_animClock.elapsed() / 1000.0 };
 		offset = kFloatAmplitude * std::sin(2 * kPi * timeElapsed / kFloatPeriodSec);
 	}
-	// 先判断是否正在被拖动：拖动是你和宠物之间的互动，优先于 Claude 的状态显示
-	// （必须写在 switch 之前，和 stateHookEvent 里"越特殊的规则越靠前"是一个道理）
+	// 播放哪段动画（被拎起来的还是 Claude 当前状态的），已经由 refreshMovie 决定好了；这里只决定"画在哪"
 	// 拖动期间 Claude 的状态照常更新，只是暂时看不到，松开后就会显示出来
-	if (m_dragging)
-	{
-		pixmap = &m_dragged;
-	}
-	else
-	{
-		switch (m_state)	// 没在拖动：根据 Claude 的状态选择图片
-		{
-		case PetState::Idle:
-			pixmap = &m_idle;
-			break;
-		case PetState::Working:
-			pixmap = &m_working;
-			break;
-		case PetState::NeedsInput:
-			pixmap = &m_waiting;
-			break;
-		case PetState::Error:
-			pixmap = &m_error;
-			break;
-		}
-	}
-	if (m_dragging)	// 正在被拖动：pixmap 在上面已经选成了 m_dragged
+	if (m_dragging)	// 正在被拖动：refreshMovie 已经换成了被拎起来的动画
 	{
 		// 被拎在手里时不浮动；画在中间位置（纵坐标 = 振幅），开始拖动时图片才不会往上跳
 		// 所有纵坐标都要再加上 kBubbleHeight：宠物画在气泡区域的下方
-		painter.drawPixmap(QPointF(0, kFloatAmplitude + kBubbleHeight), *pixmap);
+		painter.drawPixmap(QPointF(0, kFloatAmplitude + kBubbleHeight), pixmap);
 	}
 	else
 	{
 		// 用 QPointF（小数坐标）：可以画在"半个像素"的位置，浮动才平滑；QPoint 会取整，一格一格地跳
-		painter.drawPixmap(QPointF(0, kFloatAmplitude + offset + kBubbleHeight), *pixmap);
+		painter.drawPixmap(QPointF(0, kFloatAmplitude + offset + kBubbleHeight), pixmap);
 	}
 	// ---- 气泡：画在宠物之后，所以会盖在最上层 ----
 	// 有文字才画；被拎在手里时不显示
@@ -425,6 +437,7 @@ void Petwindow::mouseMoveEvent(QMouseEvent* event)
 		if (!m_dragging && (m_pressGlobalPos - event->globalPosition().toPoint()).manhattanLength() >= QApplication::startDragDistance())
 		{
 			m_dragging = true;
+			refreshMovie();	// 换成被拎起来的动画
 			update();	// 改了影响画面的变量，必须请求重画；单纯移动窗口不一定会触发 paintEvent
 		}
 		QPoint temp{ event->globalPosition().toPoint() - m_dragOffset };	// 窗口左上角的新位置 = 鼠标的屏幕坐标 - 偏移量
@@ -459,15 +472,19 @@ void Petwindow::keyPressEvent(QKeyEvent* event)
 	{
 	case Qt::Key_1:
 		setState(PetState::Idle);
+		refreshMovie();
 		break;
 	case Qt::Key_2:
 		setState(PetState::Working);
+		refreshMovie();
 		break;
 	case Qt::Key_3:
 		setState(PetState::NeedsInput);
+		refreshMovie();
 		break;
 	case Qt::Key_4:
 		setState(PetState::Error);
+		refreshMovie();
 		break;
 	}
 }
@@ -493,6 +510,7 @@ void Petwindow::scheduleErrorRecovery(const QString& sessionId)
 				m_sessionStates[sessionId] = PetState::Idle;	// 已确认存在，这里的 [] 不会插入新元素
 			}
 			setState(combinedState());	// 重新合并所有会话的状态，刷新宠物
+			refreshMovie();
 		});
 }
 
@@ -547,6 +565,7 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 		}
 	}
 	setState(combinedState());	// 先算出合并后的状态，再通过 setState 统一修改并重画
+	refreshMovie();
 }
 
 // 把 Claude 桌面应用的窗口切换到最前面（左键单击宠物时调用）
@@ -575,7 +594,8 @@ void Petwindow::activateClaudeWindow()
 
 // 鼠标松开：这次左键操作是"点击"还是"拖动"，已经在 mouseMoveEvent 里判断过了，这里直接看 m_dragging
 // （同一件事只在一个地方判断，以后调整规则只需要改一处）
-// 拖动：拖动结束，换回原来的图，并把当前位置保存下来，下次启动时恢复；拖动中换了屏幕的话，还要补上重新加载图片
+// 拖动：拖动结束，换回 Claude 当前状态的动画，并把当前位置保存下来，下次启动时恢复；
+// refreshMovie 同时会按当前屏幕的比例设置解码尺寸，拖动中换了屏幕的话（event() 跳过了），这里就顺便补上了
 // 点击：切换到 Claude 窗口
 // 选在这里保存，而不是在 mouseMoveEvent 里：拖一次只写一次，不会频繁写注册表；单纯点击也不会写
 void Petwindow::mouseReleaseEvent(QMouseEvent* event)
@@ -585,8 +605,9 @@ void Petwindow::mouseReleaseEvent(QMouseEvent* event)
 		if (m_dragging)	// 拖动
 		{
 			m_dragging = false;
-			reloadImageIfNeeded();	// 拖动中换了屏幕的话，event() 跳过了重新加载，这里补上
-			update();	// 请求重画，换回 Claude 当前状态对应的图；不请求的话会一直保持被拎起来的样子
+			refreshMovie();			// 换回 Claude 当前状态的动画，并按当前屏幕的比例设置解码尺寸
+			reloadMovieIfNeeded();	// 比例和启动时不同时会再调用一次 refreshMovie；上一行已经设置过，这一次不会再改变什么
+			update();	// 请求重画，换回 Claude 当前状态对应的动画；不请求的话会一直保持被拎起来的样子
 			QSettings settings{ kSettingsName, kSettingsName };	// 和构造函数里读取时用同样的名字
 			settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）
 		}
@@ -622,10 +643,12 @@ bool Petwindow::isListening()const
 	return m_server.isListening();
 }
 
-// 窗口被隐藏（托盘菜单里的"隐藏"）：停止浮动动画，看不见的窗口没必要一直重画
+// 窗口被隐藏（托盘菜单里的"隐藏"）：停止浮动动画和宠物动画，看不见的窗口没必要一直解码、重画
+// 停掉的宠物动画，在托盘菜单"显示"时重新开始播放（见 setUpTrayMenu）
 void Petwindow::hideEvent(QHideEvent*)
 {
 	m_animTimer.stop();
+	m_movie.stop();
 }
 
 // 鼠标移到宠物身上：开始浮动
