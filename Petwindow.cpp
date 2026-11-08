@@ -191,7 +191,8 @@ void Petwindow::setUpAnimation()
 	m_movie.start();
 }
 
-// 刷新宠物动画：状态改变、开始/结束拖动、缩放比例变了、点了「reload」时调用
+// 刷新宠物动画。由这几处调用：setState（状态改变）、setDragging（开始/结束拖动）、
+// reloadMovieIfNeeded（缩放比例变了）、菜单里的「reload」
 // 1. 先按当前屏幕的比例设置解码尺寸，并记下用的是哪个比例（m_savedDpr）。
 //    它只影响之后新解码的帧，所以文件没换时，要到下一帧才变成新尺寸
 //    （没开 CacheAll 才是这样；开了的话，已经缓存的帧不会按新尺寸重新解码）
@@ -367,6 +368,9 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 	// 必须先转成小数再除：两个整数相除会丢掉小数，315 / 180 会变成 1
 	qreal dpr{ pixmap.width() / static_cast<qreal>(kPetSize) };
 	pixmap.setDevicePixelRatio(dpr);
+	// 帧的比例和屏幕的比例不一样（缩放比例刚变、拖动中换了屏幕，还没按新比例重新解码）时，画的时候要缩放，
+	// 这时打开平滑缩放，边缘才不会有锯齿；平时两者相等，按 1:1 画，不打开
+	// qFuzzyCompare：比较两个小数是否"几乎相等"，避免浮点误差让本该相等的两个数被判成不相等
 	if (!qFuzzyCompare(dpr, devicePixelRatio()))
 	{
 		painter.setRenderHint(QPainter::SmoothPixmapTransform);
@@ -443,9 +447,7 @@ void Petwindow::mouseMoveEvent(QMouseEvent* event)
 		// !m_dragging：已经在拖动了就不再进来，避免拖动过程中每移动一次就白白请求一次重画
 		if (!m_dragging && (m_pressGlobalPos - event->globalPosition().toPoint()).manhattanLength() >= QApplication::startDragDistance())
 		{
-			m_dragging = true;
-			refreshMovie();	// 换成被拎起来的动画
-			update();	// 改了影响画面的变量，必须请求重画；单纯移动窗口不一定会触发 paintEvent
+			setDragging(true);
 		}
 		QPoint temp{ event->globalPosition().toPoint() - m_dragOffset };	// 窗口左上角的新位置 = 鼠标的屏幕坐标 - 偏移量
 		move(temp);	// 把窗口移过去（继承自 QWidget）
@@ -453,7 +455,8 @@ void Petwindow::mouseMoveEvent(QMouseEvent* event)
 }
 
 // 切换状态：改状态的唯一入口，保证"状态变了就必须一起做的事"不会被漏掉：
-// 变成空闲时清空气泡，并且总是请求重画
+// 变成空闲时清空气泡，换成对应状态的动画（refreshMovie），并且总是请求重画
+// 所以调用的地方只要写一行 setState(...)，不用再自己调用 refreshMovie（它是 private 的，类外面也调用不了）
 void Petwindow::setState(PetState state)
 {
 	m_state = state;
@@ -463,6 +466,7 @@ void Petwindow::setState(PetState state)
 	{
 		m_bubbleText.clear();
 	}
+	refreshMovie();
 	update();	// 通知 Qt 稍后重画窗口（会触发 paintEvent），不要直接调用 paintEvent
 }
 
@@ -479,19 +483,15 @@ void Petwindow::keyPressEvent(QKeyEvent* event)
 	{
 	case Qt::Key_1:
 		setState(PetState::Idle);
-		refreshMovie();
 		break;
 	case Qt::Key_2:
 		setState(PetState::Working);
-		refreshMovie();
 		break;
 	case Qt::Key_3:
 		setState(PetState::NeedsInput);
-		refreshMovie();
 		break;
 	case Qt::Key_4:
 		setState(PetState::Error);
-		refreshMovie();
 		break;
 	}
 }
@@ -517,7 +517,6 @@ void Petwindow::scheduleErrorRecovery(const QString& sessionId)
 				m_sessionStates[sessionId] = PetState::Idle;	// 已确认存在，这里的 [] 不会插入新元素
 			}
 			setState(combinedState());	// 重新合并所有会话的状态，刷新宠物
-			refreshMovie();
 		});
 }
 
@@ -572,7 +571,6 @@ void Petwindow::handleHookEvent(const QByteArray& body)
 		}
 	}
 	setState(combinedState());	// 先算出合并后的状态，再通过 setState 统一修改并重画
-	refreshMovie();
 }
 
 // 把 Claude 桌面应用的窗口切换到最前面（左键单击宠物时调用）
@@ -602,7 +600,7 @@ void Petwindow::activateClaudeWindow()
 // 鼠标松开：这次左键操作是"点击"还是"拖动"，已经在 mouseMoveEvent 里判断过了，这里直接看 m_dragging
 // （同一件事只在一个地方判断，以后调整规则只需要改一处）
 // 拖动：拖动结束，换回 Claude 当前状态的动画，并把当前位置保存下来，下次启动时恢复；
-// refreshMovie 同时会按当前屏幕的比例设置解码尺寸，拖动中换了屏幕的话（event() 跳过了），这里就顺便补上了
+// setDragging(false) 里的 refreshMovie 同时会按当前屏幕的比例设置解码尺寸，拖动中换了屏幕的话（event() 跳过了），这里就顺便补上了
 // 点击：切换到 Claude 窗口
 // 选在这里保存，而不是在 mouseMoveEvent 里：拖一次只写一次，不会频繁写注册表；单纯点击也不会写
 void Petwindow::mouseReleaseEvent(QMouseEvent* event)
@@ -611,10 +609,7 @@ void Petwindow::mouseReleaseEvent(QMouseEvent* event)
 	{
 		if (m_dragging)	// 拖动
 		{
-			m_dragging = false;
-			refreshMovie();			// 换回 Claude 当前状态的动画，并按当前屏幕的比例设置解码尺寸
-			reloadMovieIfNeeded();	// 上一行的 refreshMovie 刚更新过 m_savedDpr，这里一定判断成"没变"，什么都不会做
-			update();	// 请求重画，换回 Claude 当前状态对应的动画；不请求的话会一直保持被拎起来的样子
+			setDragging(false);	// 结束拖动：换回 Claude 当前状态的动画，按当前屏幕的比例设置解码尺寸，并请求重画
 			QSettings settings{ kSettingsName, kSettingsName };	// 和构造函数里读取时用同样的名字
 			settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）
 		}
@@ -672,4 +667,13 @@ void Petwindow::leaveEvent(QEvent*)
 {
 	m_animTimer.stop();
 	update();	// 最后重画一次：闹钟停了，paintEvent 里的位移为 0，回到中间
+}
+
+// 开始 / 结束拖动：修改 m_dragging 的唯一入口（和 setState 是同一个思路）
+// "是否在拖动"一变，就必须一起换动画、请求重画；都放在这里，调用的地方只写一行，不会漏掉
+void Petwindow::setDragging(bool isTrue)
+{
+	m_dragging = isTrue;
+	refreshMovie();	// 拖动中换成被拎起来的动画，结束时换回 Claude 当前状态的动画
+	update();		// 改了影响画面的变量，必须请求重画；单纯移动窗口不一定会触发 paintEvent
 }

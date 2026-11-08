@@ -17,7 +17,7 @@ class Petwindow : public QWidget
 {
 public:
 	Petwindow();					// 构造函数：设置窗口外观、恢复上次的位置、开始播放动画、开始监听端口、创建菜单和托盘图标
-	void setState(PetState state);	// 切换宠物状态，并通知 Qt 重画窗口（setter）
+	void setState(PetState state);	// 切换宠物状态，换成对应的动画，并通知 Qt 重画窗口（setter）
 	PetState state()const;			// 查询当前状态；常函数，只读不改（getter）
 	bool isListening()const;		// 是否成功监听了端口；失败说明端口被占用（可能已经有一个 ClauPet 在运行）
 	// 监听的端口号；Claude Code 的 HTTP hook 要发到这个端口
@@ -58,8 +58,9 @@ private:
 	// 只在调用 setScaledSize 的两个地方（setUpAnimation、refreshMovie）紧跟着更新，所以它和解码尺寸永远一致
 	qreal m_savedDpr{ 1 };
 	// 是否正在被拖动。这是你和宠物之间的互动状态，不是 Claude 的状态，所以不放进 PetState
-	// 由 mouseMoveEvent 设为 true，mouseReleaseEvent 改回 false；为 true 时 refreshMovie 换成被拎起来的动画
+	// 只通过 setDragging 修改：mouseMoveEvent 里设为 true，mouseReleaseEvent 里改回 false；为 true 时 refreshMovie 换成被拎起来的动画
 	bool m_dragging{ false };
+	void setDragging(bool isTrue);	// 修改 m_dragging 的唯一入口：同时换动画、请求重画（和 setState 同一个思路）
 	// 浮动动画用的两个计时工具，名字很像，作用完全不同：
 	QTimer m_animTimer;            // "闹钟"：悬停时每 33 毫秒响一次，每次请求重画（负责"什么时候画"）
 	QElapsedTimer m_animClock;     // "秒表"：记录开始浮动后过了多久，paintEvent 按它算位置（负责"画在哪"）
