@@ -18,6 +18,18 @@ assets/pet/working.webp
 assets/pet/waiting.webp
 assets/pet/error.webp
 assets/pet/dragging.webp
+assets/pet/idle_to_working.webp	
+assets/pet/working_to_idle.webp	
+assets/pet/idle_to_waiting.webp
+assets/pet/idle_to_error.webp
+assets/pet/working_to_waiting.webp
+assets/pet/working_to_error.webp
+assets/pet/waiting_to_idle.webp
+assets/pet/waiting_to_working.webp
+assets/pet/waiting_to_error.webp
+assets/pet/error_to_idle.webp
+assets/pet/error_to_working.webp
+assets/pet/error_to_waiting.webp
 )
 target_link_libraries(ClauPet PRIVATE Qt6::Widgets Qt6::Network)	# 链接 Qt 的这两个模块
 

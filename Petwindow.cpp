@@ -16,6 +16,7 @@
 #include<QFont>			// 气泡文字的字体
 #include<QFontMetrics>	// "字体量尺"：算出一段文字的宽度，以及把太长的文字截断成"…"
 #include<QMovie>		// QMovie：播放宠物动画（头文件里已经包含，这里写出来，一眼就能看出本文件用到了它）
+#include<QFile>			// QFile::exists：检查资源里有没有某段过渡动画
 
 // Windows API：FindWindowW、SetForegroundWindow 等，用来把 Claude 窗口切换到前台
 // NOMINMAX 必须写在 #include 之前：否则 windows.h 会定义名叫 min、max 的宏，弄坏 std::min / std::max
@@ -130,6 +131,37 @@ static bool stateHookEvent(const QString& eventName, const QString& toolName, Pe
 	return false;
 }
 
+// 状态在文件名里用的名字：和循环动画的文件名一致（idle.webp、working.webp……）
+static QString stateFileName(PetState state)
+{
+	switch (state)
+	{
+	case PetState::Idle:
+		return "idle";
+	case PetState::Working:
+		return "working";
+	case PetState::NeedsInput:
+		return "waiting";
+	case PetState::Error:
+		return "error";
+	}
+	return QString{};	// 不会走到这里；写上是为了让每条路径都有返回值
+}
+
+// 过渡动画的文件名：从 from 状态过渡到 to 状态时播放哪段动画
+// 文件名统一是 "起点_to_终点.webp"，比如 idle_to_working.webp
+// 资源里没有这个文件（还没做这段素材），就返回空字符串，调用的地方据此直接切换
+// 以后补一段素材：按这个规则命名，加进 CMakeLists 的 qt_add_resources，就会自动生效，不用改代码
+static QString transitionFileFor(PetState from, PetState to)
+{
+	const QString file{ ":/assets/pet/" + stateFileName(from) + "_to_" + stateFileName(to) + ".webp" };
+	if (QFile::exists(file))	// 资源路径（":/" 开头）也能用 QFile::exists 检查
+	{
+		return file;
+	}
+	return QString{};
+}
+
 // 构造函数：程序启动时执行一次，只负责"设置"和"登记"，真正处理事件要等事件循环开始
 // 每一步的细节都放在下面对应的私有成员函数里，这里只当"目录"，一眼就能看出启动时做了哪几件事
 // 顺序要求：restorePosition() 必须在 setUpAnimation() 之前。
@@ -162,7 +194,8 @@ void Petwindow::setUpWindow()
 
 // 动画的准备：
 // 1. 浮动动画：设置好"闹钟"和"秒表"，但不启动闹钟（鼠标悬停时才开始浮动）
-// 2. 宠物动画（m_movie）：按当前屏幕的比例设置解码尺寸，从空闲状态开始播放
+// 2. 宠物动画：给两个播放器按当前屏幕的比例设置解码尺寸，循环播放器从空闲状态开始播放，
+//    并登记好"循环一轮播完"和"过渡播完"这两个时刻要做的事
 void Petwindow::setUpAnimation()
 {
 	// m_animTimer 是"闹钟"：只负责"什么时候重画"。这里只设置间隔，不启动，平时不浮动（enterEvent 里才启动）
@@ -176,62 +209,35 @@ void Petwindow::setUpAnimation()
 		{
 			update();
 		});
-	m_movie.setFileName(":/assets/pet/idle.webp");	// 启动时是空闲状态
-	// 解码尺寸 = 逻辑尺寸 × 缩放比例，比如 180 × 1.75 = 315：帧的像素和屏幕上的物理像素一样多，显示时 1:1，最清晰
-	// kPetSize * devicePixelRatio() 是小数，用 qRound 四舍五入成最接近的整数再传给 QSize：
-	// 直接转成 int 会丢掉小数部分，浮点误差让 206.99999 变成 206（Windows 自定义缩放比例时会遇到）
-	m_movie.setScaledSize(QSize(qRound(kPetSize * devicePixelRatio()), qRound(kPetSize * devicePixelRatio())));
-	m_savedDpr = devicePixelRatio();	// 记下这个解码尺寸用的比例，reloadMovieIfNeeded 用它判断比例有没有变
-	// 每解码出一帧，就请 Qt 重画一次，把新的一帧画上去
+	m_movie.setFileName(":/assets/pet/idle.webp");	// 启动时是空闲状态（m_state 和 m_displayState 的初始值都是 Idle）
+	applyScaledSize();	// 两个播放器都按当前屏幕的比例解码（所以要在 restorePosition 之后）
+	// 循环播放器每解码出一帧，就请 Qt 重画一次，把新的一帧画上去
+	// 第 0 帧表示"一轮刚播完、重新开始"（或者刚换了文件、刚调用 start()），这时进缓冲函数看看要不要过渡：
+	// 状态变了也要等这一轮播完再过渡，因为每段循环动画都以原图起止，在第 0 帧接上过渡片段才不会跳
 	// 必须在 start() 之前连接：start() 会当场解码第 0 帧并发出 frameChanged，晚一步连接就收不到这一次
-	connect(&m_movie, &QMovie::frameChanged, this, [this]()
+	connect(&m_movie, &QMovie::frameChanged, this, [this](int frameNumber)
+		{
+			update();
+			if (frameNumber == 0)
+			{
+				syncDisplayState();
+			}
+		});
+	m_movie.start();
+	// 过渡片段播完：结束过渡，让循环播放器从第 0 帧重新开始（过渡的最后一帧就是新状态的原图，正好接上）
+	// 它在过渡期间一直在后台播放，不从头开始的话，画面会从原图跳到中间某一帧
+	// 这里不用再调用 syncDisplayState：start() 发出的第 0 帧会进入它，过渡期间状态又变了的话，就接着播下一段
+	connect(&m_transitionMovie, &QMovie::finished, this, [this]()
+		{
+			m_isTransition = false;
+			m_movie.stop();
+			m_movie.start();
+		});
+	// 过渡播放器每解码出一帧，也要请求重画；不然只能借循环播放器的重画顺带画出来，帧会对不准
+	connect(&m_transitionMovie, &QMovie::frameChanged, this, [this]()
 		{
 			update();
 		});
-	m_movie.start();
-}
-
-// 刷新宠物动画。由这几处调用：setState（状态改变）、setDragging（开始/结束拖动）、
-// reloadMovieIfNeeded（缩放比例变了）、菜单里的「reload」
-// 1. 先按当前屏幕的比例设置解码尺寸，并记下用的是哪个比例（m_savedDpr）。
-//    它只影响之后新解码的帧，所以文件没换时，要到下一帧才变成新尺寸
-//    （没开 CacheAll 才是这样；开了的话，已经缓存的帧不会按新尺寸重新解码）
-// 2. 再按"是否在拖动"和当前状态选出动画文件；setScaledSize 设的尺寸在换文件之后仍然保留
-// 3. 文件名和现在播放的一样就不换：同一个状态重复收到事件时，动画不会被打断、从头播放
-void Petwindow::refreshMovie()
-{
-	m_movie.setScaledSize(QSize(qRound(kPetSize * devicePixelRatio()), qRound(kPetSize * devicePixelRatio())));
-	m_savedDpr = devicePixelRatio();	// 紧跟着 setScaledSize 更新，保证它和解码尺寸一致
-	QString fileName{};
-	if (m_dragging)
-	{
-		fileName = ":/assets/pet/dragging.webp";
-	}
-	else
-	{
-		switch (m_state)
-		{
-		case PetState::Idle:
-			fileName = ":/assets/pet/idle.webp";
-			break;
-		case PetState::Working:
-			fileName = ":/assets/pet/working.webp";
-			break;
-		case PetState::NeedsInput:
-			fileName = ":/assets/pet/waiting.webp";
-			break;
-		case PetState::Error:
-			fileName = ":/assets/pet/error.webp";
-			break;
-		}
-	}
-	if (fileName != m_movie.fileName())
-	{
-		// 先 stop() 再换文件：播放中直接换，QMovie 可能卡在"状态是 Running、定时器却停了"，之后 start() 也救不回来
-		m_movie.stop();
-		m_movie.setFileName(fileName);
-		m_movie.start();	// 从第 0 帧开始，当场解码并发出 frameChanged，请求重画
-	}
 }
 
 // 恢复上次保存的位置（位置在 mouseReleaseEvent 里，拖动结束时保存）
@@ -304,11 +310,12 @@ void Petwindow::setUpTrayMenu()
 			}
 		});
 	// 菜单项 2：按当前屏幕的比例重新设置动画的解码尺寸。正常情况下，缩放比例变了会自动处理（见 event()），
-	// 这一项是万一自动处理失灵时的后备，所以不比较比例，直接调用 refreshMovie
+	// 这一项是万一自动处理失灵时的后备，所以不比较比例，直接调用 applyScaledSize
+	// 只改解码尺寸，不换文件：换不换动画由缓冲函数决定，这里换了会绕过过渡
 	QAction* reloadAction{ m_menu.addAction("reload") };
 	connect(reloadAction, &QAction::triggered, this, [this]()
 		{
-			refreshMovie();
+			applyScaledSize();
 			update();	// 请求重画
 		});
 	// 菜单项 3：退出。qApp 指向 main 里唯一的 QApplication 对象，quit() 让 exec() 返回、程序结束
@@ -322,15 +329,15 @@ void Petwindow::setUpTrayMenu()
 	m_tray.show();
 }
 
-// 屏幕的缩放比例和当前解码尺寸所用的比例（m_savedDpr）不一样了，就调用 refreshMovie，按当前比例重新设置动画的解码尺寸
+// 屏幕的缩放比例和当前解码尺寸所用的比例（m_savedDpr）不一样了，就调用 applyScaledSize，按当前比例重新设置两个播放器的解码尺寸
 // （比如拖到了缩放比例不同的另一块屏幕：帧还是按旧比例解码的，像素数和屏幕对不上，画的时候要缩放，就会发虚）
-// 有两处会调用它：event()（比例变了，并且没在拖动）和 mouseReleaseEvent()（拖动结束时）
+// 有两处会调用它：event()（比例变了，并且没在拖动）和 setDragging()（开始、结束拖动时）
 // 先比较再处理：这个事件每次可能会送来两次，比例没变就什么都不做
 void Petwindow::reloadMovieIfNeeded()
 {
 	if (m_savedDpr != devicePixelRatio())
 	{
-		refreshMovie();
+		applyScaledSize();
 		update();	// 请求重画
 	}
 }
@@ -341,7 +348,7 @@ void Petwindow::reloadMovieIfNeeded()
 bool Petwindow::event(QEvent* event)
 {
 	// 拖动中先不处理：拖过屏幕交界时，窗口可能在两块屏幕之间来回跳，这个事件会连续来好几次。
-	// 拖动中显示的大小不会错（paintEvent 按帧的实际宽度算 dpr），松开时 mouseReleaseEvent 会调用 refreshMovie 补上
+	// 拖动中显示的大小不会错（paintEvent 按帧的实际宽度算 dpr），松开时 setDragging(false) 会调用 reloadMovieIfNeeded 补上
 	if (event->type() == QEvent::DevicePixelRatioChange && !m_dragging)
 	{
 		reloadMovieIfNeeded();
@@ -357,8 +364,17 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 {
 	QPainter painter(this);	// 创建画笔，画在"我自己"这个窗口上；函数结束时析构，自动结束绘制
 	painter.setRenderHint(QPainter::Antialiasing);	// 抗锯齿：让气泡的圆角边缘平滑（贴图片用不到它）
-	// 当前帧的副本：QPixmap 是隐式共享的，拷贝和改 dpr 都不会复制像素（实测约 5 微秒）
-	QPixmap pixmap{ m_movie.currentPixmap() };
+	// 当前帧的副本：正在过渡就画过渡播放器的帧，否则画循环播放器的帧
+	// QPixmap 是隐式共享的，拷贝和改 dpr 都不会复制像素（实测约 5 微秒）
+	QPixmap pixmap;
+	if (m_isTransition)
+	{
+		pixmap = m_transitionMovie.currentPixmap();
+	}
+	else
+	{
+		pixmap = m_movie.currentPixmap();
+	}
 	if (pixmap.isNull())	// 第一帧还没解码出来：宽度是 0，算出来的 dpr 也会是 0，不能用
 	{
 		return;
@@ -384,9 +400,9 @@ void Petwindow::paintEvent(QPaintEvent*)	// 参数只写类型不写名字：表
 		const qreal timeElapsed{ m_animClock.elapsed() / 1000.0 };
 		offset = kFloatAmplitude * std::sin(2 * kPi * timeElapsed / kFloatPeriodSec);
 	}
-	// 播放哪段动画（被拎起来的还是 Claude 当前状态的），已经由 refreshMovie 决定好了；这里只决定"画在哪"
+	// 播放哪段动画（过渡、被拎起来的，还是某个状态的循环动画），已经由 syncDisplayState 和 setDragging 决定好了；这里只决定"画在哪"
 	// 拖动期间 Claude 的状态照常更新，只是暂时看不到，松开后就会显示出来
-	if (m_dragging)	// 正在被拖动：refreshMovie 已经换成了被拎起来的动画
+	if (m_dragging)	// 正在被拖动：setDragging 已经换成了被拎起来的动画
 	{
 		// 被拎在手里时不浮动；画在中间位置（纵坐标 = 振幅），开始拖动时图片才不会往上跳
 		// 所有纵坐标都要再加上 kBubbleHeight：宠物画在气泡区域的下方
@@ -455,8 +471,8 @@ void Petwindow::mouseMoveEvent(QMouseEvent* event)
 }
 
 // 切换状态：改状态的唯一入口，保证"状态变了就必须一起做的事"不会被漏掉：
-// 变成空闲时清空气泡，换成对应状态的动画（refreshMovie），并且总是请求重画
-// 所以调用的地方只要写一行 setState(...)，不用再自己调用 refreshMovie（它是 private 的，类外面也调用不了）
+// 变成空闲时清空气泡，并且总是请求重画
+// 这里只改 m_state，不换动画：动画要等循环播放器这一轮播完（第 0 帧），由 syncDisplayState 决定怎么过渡过去
 void Petwindow::setState(PetState state)
 {
 	m_state = state;
@@ -466,7 +482,6 @@ void Petwindow::setState(PetState state)
 	{
 		m_bubbleText.clear();
 	}
-	refreshMovie();
 	update();	// 通知 Qt 稍后重画窗口（会触发 paintEvent），不要直接调用 paintEvent
 }
 
@@ -599,8 +614,8 @@ void Petwindow::activateClaudeWindow()
 
 // 鼠标松开：这次左键操作是"点击"还是"拖动"，已经在 mouseMoveEvent 里判断过了，这里直接看 m_dragging
 // （同一件事只在一个地方判断，以后调整规则只需要改一处）
-// 拖动：拖动结束，换回 Claude 当前状态的动画，并把当前位置保存下来，下次启动时恢复；
-// setDragging(false) 里的 refreshMovie 同时会按当前屏幕的比例设置解码尺寸，拖动中换了屏幕的话（event() 跳过了），这里就顺便补上了
+// 拖动：拖动结束，换回动画，并把当前位置保存下来，下次启动时恢复；
+// setDragging(false) 里会调用 reloadMovieIfNeeded，拖动中换了屏幕的话（event() 跳过了），这里就顺便补上了
 // 点击：切换到 Claude 窗口
 // 选在这里保存，而不是在 mouseMoveEvent 里：拖一次只写一次，不会频繁写注册表；单纯点击也不会写
 void Petwindow::mouseReleaseEvent(QMouseEvent* event)
@@ -609,7 +624,11 @@ void Petwindow::mouseReleaseEvent(QMouseEvent* event)
 	{
 		if (m_dragging)	// 拖动
 		{
-			setDragging(false);	// 结束拖动：换回 Claude 当前状态的动画，按当前屏幕的比例设置解码尺寸，并请求重画
+			// 从"被拎着"回到正常状态本来就是一下子换回去的，所以直接切换到 Claude 最新的状态，不播过渡：
+			// 必须写在 setDragging(false) 之前。它里面会按 m_displayState 换回循环动画，换文件时 start() 发出的第 0 帧
+			// 会进入 syncDisplayState；先同步好，那里看到两个状态相同，就不会再开始一段过渡
+			m_displayState = m_state;
+			setDragging(false);	// 结束拖动：换回 m_displayState 的循环动画，按当前屏幕的比例设置解码尺寸，并请求重画
 			QSettings settings{ kSettingsName, kSettingsName };	// 和构造函数里读取时用同样的名字
 			settings.setValue("pos", pos());	// pos()：窗口左上角在屏幕上的位置（继承自 QWidget）
 		}
@@ -671,9 +690,100 @@ void Petwindow::leaveEvent(QEvent*)
 
 // 开始 / 结束拖动：修改 m_dragging 的唯一入口（和 setState 是同一个思路）
 // "是否在拖动"一变，就必须一起换动画、请求重画；都放在这里，调用的地方只写一行，不会漏掉
+// 拖动是你和宠物之间的互动，要立刻有反应，所以不做过渡：正在播的过渡直接打断
+// 打断过渡时 m_displayState 不用改：开始过渡时它已经更新成过渡的终点了
 void Petwindow::setDragging(bool isTrue)
 {
+	// stop() 不会发出 finished()；不停掉的话，它播完时会让循环播放器从头开始，正在播的拖动动画会突然跳回第 0 帧
+	m_transitionMovie.stop();
 	m_dragging = isTrue;
-	refreshMovie();	// 拖动中换成被拎起来的动画，结束时换回 Claude 当前状态的动画
-	update();		// 改了影响画面的变量，必须请求重画；单纯移动窗口不一定会触发 paintEvent
+	m_isTransition = false;
+	reloadMovieIfNeeded();	// 先按当前屏幕设置好解码尺寸，下面 start() 当场解码的第 0 帧才是新尺寸
+	// 开始拖动时换成被拎起来的动画；结束时换回 m_displayState 的循环动画。
+	// start() 发出的第 0 帧会进入 syncDisplayState。mouseReleaseEvent 结束拖动前已经把 m_displayState 同步成了 m_state，
+	// 所以那里什么都不做，松手后直接显示 Claude 最新的状态
+	switchMovie(m_movie, getLoopFileName());
+	update();	// 改了影响画面的变量，必须请求重画；单纯移动窗口不一定会触发 paintEvent
+}
+
+// 按当前屏幕的缩放比例，给两个播放器设置解码尺寸，并记下用的是哪个比例（m_savedDpr）
+// 解码尺寸 = 逻辑尺寸 × 缩放比例，比如 180 × 1.75 = 315：帧的像素和屏幕上的物理像素一样多，显示时 1:1，最清晰
+// kPetSize * devicePixelRatio() 是小数，用 qRound 四舍五入成最接近的整数再传给 QSize：
+// 直接转成 int 会丢掉小数部分，浮点误差让 206.99999 变成 206（Windows 自定义缩放比例时会遇到）
+// 它只影响之后新解码的帧，已经解码的这一帧不变（没开 CacheAll 才是这样；开了的话，已经缓存的帧不会按新尺寸重新解码）
+// setScaledSize 设的尺寸在换文件（setFileName）之后仍然保留，所以只在比例变了时调用就够了
+void Petwindow::applyScaledSize()
+{
+	m_movie.setScaledSize(QSize(qRound(kPetSize * devicePixelRatio()), qRound(kPetSize * devicePixelRatio())));
+	m_transitionMovie.setScaledSize(QSize(qRound(kPetSize * devicePixelRatio()), qRound(kPetSize * devicePixelRatio())));
+	m_savedDpr = devicePixelRatio();	// 紧跟着 setScaledSize 更新，保证它和解码尺寸一致
+}
+
+// 循环播放器该播哪个文件：拖动时是被拎起来的动画（拖动优先），否则是 m_displayState 的动画
+// 按 m_displayState 而不是 m_state 选：画面停在哪个状态，就接着播哪个状态的循环动画；
+// m_state 变了但还没过渡时，不管谁调用这里，画面都不会抢先跳到新状态
+QString Petwindow::getLoopFileName()
+{
+	QString fileName{};
+	if (m_dragging)
+	{
+		fileName = ":/assets/pet/dragging.webp";
+	}
+	else
+	{
+		switch (m_displayState)
+		{
+		case PetState::Idle:
+			fileName = ":/assets/pet/idle.webp";
+			break;
+		case PetState::Working:
+			fileName = ":/assets/pet/working.webp";
+			break;
+		case PetState::NeedsInput:
+			fileName = ":/assets/pet/waiting.webp";
+			break;
+		case PetState::Error:
+			fileName = ":/assets/pet/error.webp";
+			break;
+		}
+	}
+	return fileName;
+}
+
+// 缓冲函数：让 m_displayState 追上 m_state。只在循环播放器的第 0 帧（一轮播完、换了文件、过渡刚播完）时被调用
+// m_state 中途变过几次都不要紧，这里只看最新的；变过去又变回来（比如 idle → working → idle）就什么都不做
+// 1. 正在过渡：等它播完再说（过渡的最后一帧一定是某个状态的原图，从那里接下一段才连贯）
+//    正在拖动：拖动结束时 setDragging 会换回循环动画，那时再决定
+// 2. 两个状态相同：什么都不做
+// 3. 有过渡素材：开始播过渡；没有素材：直接切换。两种情况都马上把 m_displayState 更新成终点，
+//    并让循环播放器换成终点的循环动画（过渡期间它在后台播放，过渡播完时会从第 0 帧重新开始）
+// 顺序要求：先改 m_isTransition 和 m_displayState，再换循环播放器的文件。
+// 换文件时 start() 会当场发出第 0 帧，又进入这个函数：那时要么正在过渡（第 1 步就返回），要么两个状态已经相同（什么都不做）
+void Petwindow::syncDisplayState()
+{
+	if (m_isTransition || m_dragging)
+	{
+		return;
+	}
+	if (m_displayState != m_state)
+	{
+		QString transFile{ transitionFileFor(m_displayState, m_state) };
+		if (!transFile.isEmpty())	// 有这一对状态的过渡素材
+		{
+			m_isTransition = true;
+			switchMovie(m_transitionMovie, transFile);
+		}
+		m_displayState = m_state;
+		switchMovie(m_movie, getLoopFileName());
+	}
+}
+
+// 让 movie 换成 fileName 这个文件，并从第 0 帧开始播放
+// 先 stop() 再换文件：播放中直接换，QMovie 可能卡在"状态是 Running、定时器却停了"，之后 start() 也救不回来
+// start() 会当场解码第 0 帧并发出 frameChanged，请求重画
+void Petwindow::switchMovie(QMovie& movie, const QString& fileName)
+{
+	movie.stop();
+	movie.setFileName(fileName);
+	movie.start();
 }
