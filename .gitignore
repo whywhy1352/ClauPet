@@ -14,5 +14,6 @@ enc_temp_folder/
 anim/**/*.png
 anim/**/*.mp4
 anim/**/*.webp
-anim/.venv/
+anim/**/work/
+anim/.pylib/
 

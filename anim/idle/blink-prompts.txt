@@ -1,0 +1,14 @@
+ClauPet idle 眨眼帧：生图提示词（2026-11-08）
+
+输入：assets/pet/idle.png（透明背景的原图）
+要两张：半闭眼、全闭眼。用之前生成 idle 的同一个工具做"编辑"。
+输出：PNG，尽量保持 1254×1254。背景透不透明都行，我只取眼睛那一块，对齐和调色我来做。
+保存为：anim/idle/blink_half.png、anim/idle/blink_closed.png
+
+半闭眼：
+Precisely edit the provided chibi character image. Change ONLY the eyes: both upper eyelids lowered halfway, covering the top half of the amber irises, a relaxed mid-blink. Keep everything else exactly identical: hair and bangs (including the strands crossing the eyes), face shape, eyebrows, mouth, ears, earrings, clothing, book, pose, framing, scale, position and canvas size. Same clean anime linework and soft cel shading.
+
+全闭眼：
+Precisely edit the provided chibi character image. Change ONLY the eyes: both eyes fully closed in a calm, relaxed blink, drawn as gentle U-shaped closed-eyelid curves with eyelashes (not happy ^^ arcs), at exactly the same position and width as the open eyes. Keep everything else exactly identical: hair and bangs (including the strands crossing the eyes), face shape, eyebrows, mouth, ears, earrings, clothing, book, pose, framing, scale, position and canvas size. Same clean anime linework and soft cel shading.
+
+挑图标准：眼睛的位置和大小要和原图一致；刘海、眉毛不能变形。
