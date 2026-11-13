@@ -211,6 +211,12 @@ void Petwindow::setUpAnimation()
 		});
 	m_movie.setFileName(":/assets/pet/idle.webp");	// 启动时是空闲状态（m_state 和 m_displayState 的初始值都是 Idle）
 	applyScaledSize();	// 两个播放器都按当前屏幕的比例解码（所以要在 restorePosition 之后）
+	// 循环播放器缓存所有解码好的帧：循环动画一直在反复播放，从第二轮起直接从缓存里取，不用再解码、缩放
+	// （实测待着不动时 CPU 从一个核的 16.5% 降到约 1%，私有内存多出约 30 MB）
+	// 过渡播放器不开：过渡只播一次、隔很久才播一次，缓存起来没用，还占内存
+	// 缓存模式换文件之后仍然保留，只设这一次；但 setFileName 会清空已经缓存的帧，所以每次换状态后，新动画的第一轮还是要解码
+	// 注意：开了缓存以后，缩放比例变了只调用 setScaledSize 不够，缓存里还是旧尺寸的帧，要重新设置一次文件名来清空（见 reloadMovieIfNeeded）
+	m_movie.setCacheMode(QMovie::CacheAll);
 	// 循环播放器每解码出一帧，就请 Qt 重画一次，把新的一帧画上去
 	// 第 0 帧表示"一轮刚播完、重新开始"（或者刚换了文件、刚调用 start()），这时进缓冲函数看看要不要过渡：
 	// 状态变了也要等这一轮播完再过渡，因为每段循环动画都以原图起止，在第 0 帧接上过渡片段才不会跳
@@ -311,11 +317,13 @@ void Petwindow::setUpTrayMenu()
 		});
 	// 菜单项 2：按当前屏幕的比例重新设置动画的解码尺寸。正常情况下，缩放比例变了会自动处理（见 event()），
 	// 这一项是万一自动处理失灵时的后备，所以不比较比例，直接调用 applyScaledSize
-	// 只改解码尺寸，不换文件：换不换动画由缓冲函数决定，这里换了会绕过过渡
+	// 然后把循环播放器重新设成它该播的同一个文件（getLoopFileName 按 m_displayState 选，和正在播的是同一个）：
+	// 目的是清空 CacheAll 缓存的旧尺寸帧，不是换动画，所以不会绕过过渡；动画会从第 0 帧重新开始
 	QAction* reloadAction{ m_menu.addAction("reload") };
 	connect(reloadAction, &QAction::triggered, this, [this]()
 		{
 			applyScaledSize();
+			switchMovie(m_movie, getLoopFileName());
 			update();	// 请求重画
 		});
 	// 菜单项 3：退出。qApp 指向 main 里唯一的 QApplication 对象，quit() 让 exec() 返回、程序结束
@@ -338,6 +346,10 @@ void Petwindow::reloadMovieIfNeeded()
 	if (m_savedDpr != devicePixelRatio())
 	{
 		applyScaledSize();
+		// 循环播放器开了 CacheAll，缓存里还是旧尺寸的帧，setScaledSize 管不到它们（实测）
+		// 重新设置一次同一个文件来清空缓存，之后按新尺寸重新解码；动画会从第 0 帧重新开始，比例很少变，可以接受
+		// 换文件时 start() 发出的第 0 帧照常进入 syncDisplayState，和平时换文件一样
+		switchMovie(m_movie, getLoopFileName());
 		update();	// 请求重画
 	}
 }
@@ -710,7 +722,8 @@ void Petwindow::setDragging(bool isTrue)
 // 解码尺寸 = 逻辑尺寸 × 缩放比例，比如 180 × 1.75 = 315：帧的像素和屏幕上的物理像素一样多，显示时 1:1，最清晰
 // kPetSize * devicePixelRatio() 是小数，用 qRound 四舍五入成最接近的整数再传给 QSize：
 // 直接转成 int 会丢掉小数部分，浮点误差让 206.99999 变成 206（Windows 自定义缩放比例时会遇到）
-// 它只影响之后新解码的帧，已经解码的这一帧不变（没开 CacheAll 才是这样；开了的话，已经缓存的帧不会按新尺寸重新解码）
+// 它只影响之后新解码的帧，已经解码的这一帧不变；循环播放器开了 CacheAll，已经缓存的帧也不会按新尺寸重新解码，
+// 所以比例变了时，调用它的地方还要重新设置一次文件名来清空缓存（见 reloadMovieIfNeeded 和 reload 菜单）
 // setScaledSize 设的尺寸在换文件（setFileName）之后仍然保留，所以只在比例变了时调用就够了
 void Petwindow::applyScaledSize()
 {
