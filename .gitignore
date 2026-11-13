@@ -9,7 +9,8 @@ promo/*.wav
 promo/*.log
 promo/stills*/
 enc_temp_folder/
-架构设计.md
+# 自己的架构理解笔记（包括留存的旧版本，如 架构设计-v1.md），不提交
+架构设计*.md
 # anim/ 只提交脚本和说明；图片、视频这些中间产物都不提交（成品放 assets/pet/）
 anim/**/*.png
 anim/**/*.mp4

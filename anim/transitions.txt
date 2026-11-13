@@ -1,0 +1,37 @@
+ClauPet 过渡动画总表（2026-11-12）
+
+12 段过渡（idle / working / waiting / error 两两之间），文件名和现在的占位过渡一样，代码不用改。
+只需要生成 9 条：不涉及 error 的 3 对，反方向用倒放；涉及 error 的都要两个方向分别生成，
+因为倒放会让眼泪往眼睛里流回去。
+
+  要生成的（文件夹里有 seedance_first.png、seedance_last.png、seedance-prompt.txt、raw/）：
+    idle_to_working      蓝底   倒放得到 working_to_idle
+    idle_to_waiting      蓝底   倒放得到 waiting_to_idle
+    working_to_waiting   蓝底   倒放得到 waiting_to_working
+    idle_to_error        绿底
+    error_to_idle        绿底
+    working_to_error     绿底
+    error_to_working     绿底
+    waiting_to_error     绿底
+    error_to_waiting     绿底
+
+  绿底：凡是首帧或尾帧里有 error（淡蓝色眼泪）的，都用绿底，免得眼泪被当成蓝幕抠掉。
+
+生成设置（每条都一样）：首尾帧模式，首帧传 seedance_first.png、尾帧传 seedance_last.png（别传反）；
+Seedance 2.5（做 working 第二版的那个），**480P**，比例自动，4 秒，生成 1 条；下载的 MP4 放进对应文件夹的 raw/。
+  480P 实测输出 640×640，缩到 360 还有余量，清晰度和 720P 的循环动画差别很小（2026-11-12 用 idle_to_working 验证）。
+
+后期（Claude 来做，脚本 anim/process_transition.py）：首帧换成起点原图、尾帧换成终点原图；颜色校正在两张原图之间按时间插值；
+去掉开头结尾静止的帧，**压缩到 1 秒**（24 帧，用户在 1 秒 / 1.5 秒 / 2 秒里选的）；编码成只播一次（WebP 循环次数 1，
+QMovie 播完发 finished）；需要倒放的再写一份反方向的。例：
+  python anim/process_transition.py anim/idle_to_working/raw/xxx.mp4 --from assets/pet/idle.png --to assets/pet/working.png \
+      --seconds 1 --out anim/idle_to_working/out/idle_to_working_1s.webp --reverse-out anim/idle_to_working/out/working_to_idle_1s.webp
+  绿底的加 --screen green。
+
+进度：
+  idle_to_working   已完成（即梦 4142，480P），working_to_idle 由它倒放，2026-11-12 换进 assets/pet/
+  idle_to_waiting   已完成（即梦 1024），waiting_to_idle 由它倒放，2026-11-12 换进 assets/pet/
+  working_to_waiting 已完成（即梦 7320），waiting_to_working 由它倒放，2026-11-12 换进 assets/pet/
+  idle_to_error 5085、error_to_idle 8999、working_to_error 6529、error_to_working 5155、waiting_to_error 7915：已完成，2026-11-12 换进 assets/pet/
+  error_to_waiting 5400：已完成；原视频第 63～79 帧动作特别快，均匀加速后像跳了一下，所以用 --motion-weight 0.5（按动作量分配帧）
+  12 段过渡全部完成。
